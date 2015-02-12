@@ -1,3 +1,5 @@
+yum check-update
+yum makecache fast
 yum install -y python-devel
 
 cd /vagrant
