@@ -1,8 +1,10 @@
-# mint
+# Register publisher
 Beta version of the register publisher
 
-Currently this service forwards messages from the land register queue
-to the feeder queue.
+This service will forward messages from the land register queue to the feeder queue.
+
+At the moment this repo contains the mint code, as a starting point to write the new service within its own 
+virtual machine.
 
 ##dependencies:
 - tba
