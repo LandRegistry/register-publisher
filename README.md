@@ -11,6 +11,12 @@ virtual machine.
 
 ##how to run in development
 
+N.B.: for a Windows host m/c:
+
+    git config --global core.autocrlf false
+
+Then use 'Git Bash' console.
+
 ```
 vagrant up
 ```
