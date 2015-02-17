@@ -1,12 +1,5 @@
 flask==0.10.1
-gunicorn==19.1.1
-pycrypto==2.6.1
-jws==0.1.2
-MarkupSafe==0.23
-utils==0.7
-mock==1.0.1
 pytest==2.6.4
 pytest-cov==1.8.1
-requests==2.5.1
-six==1.9.0
+kombu==3.0.24
 

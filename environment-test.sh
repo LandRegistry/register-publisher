@@ -1,2 +1,3 @@
+#!/bin/sh
 export SETTINGS="config.TestConfig"
-export SYSTEM_OF_RECORD=""
+export REGISTER_PUBLISHER=""
