@@ -7,7 +7,7 @@ At the moment this repo contains the mint code, as a starting point to write the
 virtual machine.
 
 ##dependencies:
-- tba
+- tba,
 
 ##how to run in development
 
