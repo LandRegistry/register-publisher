@@ -1,28 +1,63 @@
+#!/bin/python
+
 import os
+import json
 import unittest
-import unittest.mock
+import time
 from application import server
-from application.server import app
+from flask import Flask
+from kombu import Exchange, Queue, Connection, Consumer, Producer
+from kombu.common import maybe_declare
 
+"""
+Test Register-Publisher on an 'ad hoc' basis or automatically (pytest).
+Pretend to be "System Of Record" publisher.
+"""
 
-class TestSequenceFunctions(unittest.TestCase):
+# Flask is used here purely for configuration purposes.
+app = Flask(__name__)
+app.config.from_object(os.environ.get('SETTINGS'))
+RP_HOSTNAME = app.config('RP_HOSTNAME')
+INCOMING_QUEUE = app.config('INCOMING_QUEUE')
+
+# Basic test data.
+json_data = json.dumps([1,2,3,{'4': 5, '6': 7}], separators=(',', ':'))
+
+class TestRegisterPublisher(unittest.TestCase):
 
     def setUp(self):
-        app.config.from_object(os.environ.get('SETTINGS'))
-        self.app = server.app.test_client()
+        """ Ensure that message broker is alive """
 
-    def test_server(self):
-        self.assertEqual((self.app.get('/')).status, '200 OK')
+        connection, channel = server.setup_connection()
+        self.connection = connection
+        self.channel = channel
 
+        self.assertEqual(self.connection.connected, True)
 
-    @mock.patch('requests.post')
-    @mock.patch('requests.Response')
-    def test_insert_route(self, mock_response, mock_post):
-        mock_response.text = "row inserted"
-        mock_post.return_value = mock_response
-        headers = {'content-Type': 'application/json'}
-        response = self.app.post('/insert', data = TEST_TITLE, headers = headers)
-        self.assertEqual(response.data, "row inserted")
+    # Send message from dummy "System Of Record", then consume and check it.
+    def test_End_To_End(self):
+        incoming_exchange = server.incoming_exchange
+        incoming_queue = server.incoming_queue
+        outgoing_exchange = server.outgoing_exchange
 
+        channel = self.channel
 
+        # Send a message to 'incoming' exchange - i.e. as if from SoR.
+        producer = server.setup_producer(channel, exchange=incoming_exchange)
 
+        producer.publish(payload=json_data)
+
+        # Wait a bit - one second should be long enough.
+        time.sleep(1)
+
+        # Consume (poll) message from outgoing exchange.
+        queue = Queue(name="outgoing_queue", exchange=outgoing_exchange)
+        message = queue.get(no_ack=True, accept=['json'])
+
+        self.assertEqual(message, json_data)
+
+    def tearDown(self):
+        self.connection.close()
+
+if __name__ == '__main__':
+    unittest.main()
