@@ -1,6 +1,7 @@
 #!/bin/python
 
 import os
+import multiprocessing
 from flask import Flask
 from kombu import Exchange, Queue, Connection, Consumer, Producer
 from kombu.common import maybe_declare
@@ -26,23 +27,51 @@ app = Flask(__name__)
 app.config.from_object(os.environ.get('SETTINGS'))
 
 # Set up root logger
-ll = app.config('LOG_LEVEL')
+ll = app.config['LOG_LEVEL']
 setup_logging(loglevel=ll, loggers=[''])
 logger = get_logger(__name__)
 
 # Routing key is same as queue name in "default direct exchange" case; exchange name is blank.
-INCOMING_QUEUE = app.config('INCOMING_QUEUE')
-RP_HOSTNAME = app.config('RP_HOSTNAME')
+INCOMING_QUEUE = app.config['INCOMING_QUEUE']
+RP_HOSTNAME = app.config['RP_HOSTNAME']
 incoming_exchange = Exchange(type="direct", durable=True)
 incoming_queue = Queue(INCOMING_QUEUE, exchange=incoming_exchange)
 outgoing_exchange = Exchange(type="fanout")
 
 # Helper functions, mostly to aid testing.
 def setup_connection():
-    connection = Connection(hostname=RP_HOSTNAME)
-    channel = connection.channel()
+    """
+    Attempt connection, with timeout.
+    :rtype : object
+    """
 
-    return connection, channel
+    def _connect(q):
+        # Attempt connection in a separate process, as (implied) 'connect' call hangs if permissions not set etc.
+        connection = Connection(hostname=RP_HOSTNAME)
+        channel = connection.channel()
+        q.put([connection, channel])
+
+    queue = multiprocessing.Queue()
+    queue.put([None, None])
+
+    process = multiprocessing.Process(target=_connect, args=(queue,))
+    process.start()
+
+    # Wait until process finishes or time-out occurs.
+    process.join(1)
+
+    if process.is_alive():
+
+        # Terminate
+        process.terminate()
+        process.join()
+
+        err_msg = "Connection unavailable: {}".format(RP_HOSTNAME)
+        raise RuntimeError(err_msg)
+
+    result = tuple(q.get())
+
+    return result
 
 def setup_producer(channel, exchange=outgoing_exchange, serializer='json'):
 
