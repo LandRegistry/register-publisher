@@ -1,9 +1,9 @@
 #!/bin/python
 
 import os
-import multiprocessing
+import stopit
+import kombu
 from flask import Flask
-from kombu import Exchange, Queue, Connection, Consumer, Producer
 from kombu.common import maybe_declare
 from kombu.log import get_logger
 from kombu.utils.debug import setup_logging
@@ -34,48 +34,36 @@ logger = get_logger(__name__)
 # Routing key is same as queue name in "default direct exchange" case; exchange name is blank.
 INCOMING_QUEUE = app.config['INCOMING_QUEUE']
 RP_HOSTNAME = app.config['RP_HOSTNAME']
-incoming_exchange = Exchange(type="direct", durable=True)
-incoming_queue = Queue(INCOMING_QUEUE, exchange=incoming_exchange)
-outgoing_exchange = Exchange(type="fanout")
+incoming_exchange = kombu.Exchange(type="direct", durable=True)
+outgoing_exchange = kombu.Exchange(type="fanout")
+
 
 # Helper functions, mostly to aid testing.
 def setup_connection():
     """
     Attempt connection, with timeout.
-    :rtype : object
     """
 
-    def _connect(q):
-        # Attempt connection in a separate process, as (implied) 'connect' call hangs if permissions not set etc.
-        connection = Connection(hostname=RP_HOSTNAME)
-        channel = connection.channel()
-        q.put([connection, channel])
+    # Attempt connection in a separate thread, as (implied) 'connect' call hangs if permissions not set etc.
+    with stopit.ThreadingTimeout(10) as to_ctx_mgr:
+        assert to_ctx_mgr.state == to_ctx_mgr.EXECUTING
 
-    queue = multiprocessing.Queue()
-    queue.put([None, None])
+        connection = kombu.Connection(hostname=RP_HOSTNAME)
+        connection.connect()
 
-    process = multiprocessing.Process(target=_connect, args=(queue,))
-    process.start()
-
-    # Wait until process finishes or time-out occurs.
-    process.join(1)
-
-    if process.is_alive():
-
-        # Terminate
-        process.terminate()
-        process.join()
-
+    if to_ctx_mgr.state == to_ctx_mgr.TIMED_OUT:
         err_msg = "Connection unavailable: {}".format(RP_HOSTNAME)
         raise RuntimeError(err_msg)
 
-    result = tuple(q.get())
 
-    return result
+    logger.info("setup_connection(): {}".format(connection.as_uri()))
 
-def setup_producer(channel, exchange=outgoing_exchange, serializer='json'):
+    return connection
 
-    producer = Producer(channel, exchange=exchange, serializer=serializer)
+
+def setup_producer(connection, exchange=outgoing_exchange, serializer='json'):
+
+    producer = kombu.Producer(connection, exchange=exchange, serializer=serializer)
 
     # Create exchange on broker if necessary.
     maybe_declare(exchange, producer.channel)
@@ -83,30 +71,39 @@ def setup_producer(channel, exchange=outgoing_exchange, serializer='json'):
     return producer
 
 
-def setup_consumer(channel, exchange=incoming_exchange, queue=None, callback=None):
+def setup_consumer(connection, callback=None):
     """ Create consumer with single queue and callback.
-    :rtype : object
-    :param channel:
-    :param queue:
-    :param callback:
-    :return:
     """
-    consumer = Consumer(channel, queues=queue, callbacks=[callback], accept=['json'])
+
+    queue = setup_queue(connection, INCOMING_QUEUE, exchange=incoming_exchange)
 
     # Create exchange on broker if necessary.
-    maybe_declare(exchange, consumer.channel)
+    maybe_declare(queue.exchange, connection)
+
+    consumer = kombu.Consumer(connection, queues=queue, callbacks=[callback], accept=['json'])
 
     return consumer
 
+
+def setup_queue(connection, name="", exchange=None):
+    """
+    Return bound queue.
+    """
+
+    unbound_queue = kombu.Queue(name=name, exchange=exchange)
+    bound_queue = unbound_queue(connection)
+    bound_queue.declare()
+
+    return bound_queue
+
+
 def run():
 
-    # RabbitMQ connection & channel; default user/password.
-    # ['connection' is via TCP or the like. 'channel' is a "virtual connection"].
-    ##connection = Connection(hostname=RP_HOSTNAME, userid="guest", password="guest", virtual_host="/")
-    connection, channel = setup_connection()
+    # RabbitMQ connection/channel; default user/password.
+    connection = setup_connection()
 
-    # Producer: could get one from pool instead.
-    producer = setup_producer(channel)
+    # Producer for outgoing (default) exchange.
+    producer = setup_producer(connection)
 
     # This is used to consume messages from the "System of Record", then forward them to the outside world.
     # @TO DO: This may unpack incoming messages, then pack them again when forwarding; consider 'on_message()' instead.
@@ -117,10 +114,11 @@ def run():
         logger.info("RECEIVED MSG - delivery_info: %r" % message.delivery_info)
         message.ack()
 
-        # Forward message to 'fanout' exchange.
-        producer.publish(payload=body)
+        # Forward message to outgoing exchange.
+        producer.publish(body=body)
 
-    consumer = setup_consumer(channel, queue=incoming_queue, callback=process_message)
+    # Create consumer with default queue.
+    consumer = setup_consumer(connection, callback=process_message)
 
 
     # Loop "forever", as a service.
@@ -133,9 +131,8 @@ def run():
 
     # Graceful degradation.
     connection.close()
-    channel.close()
     producer.close()
-    consumer.close()
+    consumer.cancel()
 
 if __name__ == "__main__":
     print("This module should be executed as a separate Python process")
