@@ -1,12 +1,11 @@
 #!/bin/python
 
 import os
+import logging
 import stopit
 import kombu
 from flask import Flask
 from kombu.common import maybe_declare
-from kombu.log import get_logger
-from kombu.utils.debug import setup_logging
 
 """
 Register-Publisher: forwards messages from the System of Record to the outside world, via AMQP "broadcast".
@@ -26,17 +25,23 @@ More importantly perhaps, this package acts as a proxy publisher for the System 
 app = Flask(__name__)
 app.config.from_object(os.environ.get('SETTINGS'))
 
-# Set up root logger
-ll = app.config['LOG_LEVEL']
-setup_logging(loglevel=ll, loggers=[''])
-logger = get_logger(__name__)
-
 # Routing key is same as queue name in "default direct exchange" case; exchange name is blank.
 INCOMING_QUEUE = app.config['INCOMING_QUEUE']
 RP_HOSTNAME = app.config['RP_HOSTNAME']
 incoming_exchange = kombu.Exchange(type="direct", durable=True)
 outgoing_exchange = kombu.Exchange(type="fanout")
 
+# Set up root logger
+def setup_logger(name=__name__):
+    ll = app.config['LOG_LEVEL']
+    FORMAT = "[%(filename)s:%(lineno)s - %(funcName)20s() ] %(message)s"
+    logging.basicConfig(format=FORMAT, level=ll)
+
+    logger = logging.getLogger(name)
+
+    return logger
+
+logger = setup_logger()
 
 # Helper functions, mostly to aid testing.
 def setup_connection():
@@ -111,7 +116,7 @@ def run():
     def process_message(body, message):
         ''' Forward messages from the 'System of Record' to the outside world '''
 
-        logger.info("RECEIVED MSG - delivery_info: %r" % message.delivery_info)
+        logger.info("RECEIVED MSG - delivery_info: {}".format(message.delivery_info))
         message.ack()
 
         # Forward message to outgoing exchange.
