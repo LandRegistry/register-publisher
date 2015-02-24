@@ -36,26 +36,45 @@ class TestRegisterPublisher(unittest.TestCase):
         with server.setup_connection() as connection:
             self.assertEqual(connection.connected, True)
 
-    def test_simple_queue(self):
-        """ Basic check of message send/get via default direct exchange """
+        self.message = make_message()
 
-        message_put = make_message()
+    def test_basic_queue(self):
+        """ Basic check of message send/get via default direct exchange """
 
         with server.setup_connection() as connection:
             with connection.SimpleQueue('simple_queue') as queue:
-                queue.put(message_put)
-                logger.info(message_put)
+                queue.put(self.message)
+                logger.info("Sent message: {}".format(self.message))
 
         # Wait a bit - one second should be long enough.
         time.sleep(1)
 
         with server.setup_connection() as connection:
             with connection.SimpleQueue('simple_queue') as queue:
-                message_got = queue.get(block=True, timeout=1)
-                logger.info("Received: {}".format(message_got.payload))
-                message_got.ack()
+                message = queue.get(block=True, timeout=1)
+                logger.info("Received: {}".format(message.payload))
+                message.ack()
 
-        self.assertEqual(message_put, message_got.payload)
+        self.assertEqual(self.message, message.payload)
+
+    def test_simple_queue(self):
+        """ Basic check of message send/get via 'simple' interface """
+
+        with server.setup_connection() as connection:
+            with connection.SimpleQueue('simple_queue') as queue:
+                queue.put(self.message)
+                logger.info("Sent message: {}".format(self.message))
+
+        # Wait a bit - one second should be long enough.
+        time.sleep(1)
+
+        with server.setup_connection() as connection:
+            with connection.SimpleQueue('simple_queue') as queue:
+                message = queue.get(block=True, timeout=1)
+                logger.info("Received: {}".format(message.payload))
+                message.ack()
+
+        self.assertEqual(self.message, message.payload)
 
 
     # Send message from dummy "System Of Record", then consume and check it.
