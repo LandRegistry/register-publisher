@@ -25,21 +25,7 @@ def handle_message(body, message):
     print(' delivery_info:\n%s' % (pretty(message.delivery_info), ))
     message.ack()
 
-#: Create a connection and a channel.
-#: If hostname, userid, password and virtual_host is not specified
-#: the values below are the default, but listed here so it can
-#: be easily changed.
-with connection as conn:
+message = queue.get()
 
-    #: Create consumer using our callback and queue.
-    #: Second argument can also be a list to consume from
-    #: any number of queues.
-    with Consumer(conn, queue, callbacks=[handle_message]):
-
-        #: Each iteration waits for a single event. Note that this
-        #: event may not be a message, or a message that is to be
-        #: delivered to the consumers channel, but any event received
-        #: on the connection.
-        for _ in eventloop(conn):
-            pass
-
+if message:
+    handle_message(message.body, message)
