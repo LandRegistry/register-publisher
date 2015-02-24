@@ -27,6 +27,7 @@ app.config.from_object(os.environ.get('SETTINGS'))
 
 # Routing key is same as queue name in "default direct exchange" case; exchange name is blank.
 INCOMING_QUEUE = app.config['INCOMING_QUEUE']
+OUTGOING_QUEUE = app.config['OUTGOING_QUEUE']
 RP_HOSTNAME = app.config['RP_HOSTNAME']
 incoming_exchange = kombu.Exchange(type="direct", durable=True)
 outgoing_exchange = kombu.Exchange(type="fanout")
@@ -35,7 +36,8 @@ outgoing_exchange = kombu.Exchange(type="fanout")
 def setup_logger(name=__name__):
     ll = app.config['LOG_LEVEL']
     FORMAT = "[%(filename)s:%(lineno)s - %(funcName)20s() ] %(message)s"
-    logging.basicConfig(format=FORMAT, level=ll)
+    filename = "{}.log".format(name)
+    logging.basicConfig(filename=filename, format=FORMAT, level=ll)
 
     logger = logging.getLogger(name)
 
@@ -61,45 +63,55 @@ def setup_connection():
         raise RuntimeError(err_msg)
 
 
-    logger.info("setup_connection(): {}".format(connection.as_uri()))
+    logger.info("URI: {}".format(connection.as_uri()))
 
     return connection
 
 
-def setup_producer(connection, exchange=outgoing_exchange, serializer='json'):
+# Producer, for single 'outgoing' queue by default.
+def setup_producer(connection, exchange=outgoing_exchange, queue_name=OUTGOING_QUEUE, serializer='json'):
 
     producer = kombu.Producer(connection, exchange=exchange, serializer=serializer)
 
-    # Create exchange on broker if necessary.
-    maybe_declare(exchange, producer.channel)
-
-    return producer
-
-
-def setup_consumer(connection, callback=None):
-    """ Create consumer with single queue and callback.
-    """
-
-    queue = setup_queue(connection, INCOMING_QUEUE, exchange=incoming_exchange)
+    # Can only publish to a queue.
+    queue = setup_queue(connection, name=queue_name, exchange=exchange)
+    logger.info("publisher queue: {}".format(queue.name))
 
     # Create exchange on broker if necessary.
-    maybe_declare(queue.exchange, connection)
+    maybe_declare(exchange, connection)
+
+    return producer, queue
+
+
+# Consumer, for 'incoming' queue by default.
+def setup_consumer(connection, exchange=incoming_exchange, queue_name=INCOMING_QUEUE, callback=None):
+    """ Create consumer with single queue and callback """
+
+    # Create exchange on broker if necessary.
+    maybe_declare(exchange, connection)
+
+    queue = setup_queue(connection, name=queue_name, exchange=exchange)
+    logger.info("consumer queue: {}".format(queue.name))
 
     consumer = kombu.Consumer(connection, queues=queue, callbacks=[callback], accept=['json'])
 
-    return consumer
+    return consumer, queue
 
 
-def setup_queue(connection, name="", exchange=None):
-    """
-    Return bound queue.
-    """
+def setup_queue(connection, name=None, exchange=None, key=None):
+    """ Return bound queue """
 
-    unbound_queue = kombu.Queue(name=name, exchange=exchange)
-    bound_queue = unbound_queue(connection)
-    bound_queue.declare()
+    if name is None or exchange is None:
+        raise RuntimeError("setup_queue: queue/exchange name required!")
 
-    return bound_queue
+    routing_key = name if key is None else key
+    queue = kombu.Queue(name=name, exchange=exchange, routing_key=routing_key)
+    queue.maybe_bind(connection)
+    queue.declare()
+
+    logger.info("queue name, exchange, key: {}, {}, {}".format(name, exchange, routing_key))
+
+    return queue
 
 
 def run():
