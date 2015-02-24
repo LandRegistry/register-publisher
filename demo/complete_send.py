@@ -7,7 +7,7 @@ from kombu import Connection, Producer, Exchange, Queue
 #: By default messages sent to exchanges are persistent (delivery_mode=2),
 #: and queues and exchanges are durable.
 
-exchange = Exchange('kombu_demo', type='direct')
+exchange = Exchange()
 connection = Connection('amqp://guest:guest@localhost:5672//')
 
 # Create (if necessary) a queue bound to the connection.
