@@ -7,7 +7,7 @@ At the moment this repo contains the mint code, as a starting point to write the
 virtual machine.
 
 ##dependencies:
-- tba,
+- rabbitmq,
 
 ##how to run in development
 
@@ -44,4 +44,23 @@ In virtual machine
 
 ```
 ./test.sh
+```
+
+##How to manage rabbitmq:
+Status of the server
+
+```
+service rabbitmq-server status
+```
+
+Stop the server
+
+```
+service rabbitmq-server stop
+```
+
+Start the server
+
+```
+service rabbitmq-server start
 ```
