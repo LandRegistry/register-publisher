@@ -4,6 +4,7 @@ import json
 import unittest
 import time
 import datetime
+import stopit
 from multiprocessing import Process
 from application import server
 from flask import Flask
@@ -26,15 +27,18 @@ def make_message():
     dt=str(datetime.datetime.now())
     return json.dumps(dt.split())
 
-#: This can be the callback applied when a message is received - i.e. "consume()" case.
-def handle_message(body, message):
-    logger.info('Received message: {}'.format(body))
-    logger.info(' properties: {}'.format(message.properties))
-    logger.info(' delivery_info: {}'.format(message.delivery_info))
-    message.ack()
-
 
 class TestRegisterPublisher(unittest.TestCase):
+
+    #: This can be the callback applied when a message is received - i.e. "consume()" case.
+    def handle_message(self, body, message):
+        logger.info('Received message: {}'.format(body))
+        logger.info(' properties: {}'.format(message.properties))
+        logger.info(' delivery_info: {}'.format(message.delivery_info))
+        message.ack()
+
+        # Note: 'body' may have been pickled, so refer to 'payload' instead.
+        self.assertEqual(self.message, message.payload)
 
     def setUp(self):
         """ Establish connection and other resources; prepare """
@@ -44,13 +48,21 @@ class TestRegisterPublisher(unittest.TestCase):
             # Ensure that message broker is alive
             self.assertEqual(connection.connected, True)
 
+            # We also need relevant queues established before publishing to exchange!
             queue = server.setup_queue(connection, name=server.INCOMING_QUEUE, exchange=server.incoming_exchange)
             queue.purge()
+            self.incoming_queue = queue
 
             queue = server.setup_queue(connection, name=server.OUTGOING_QUEUE, exchange=server.outgoing_exchange)
             queue.purge()
+            self.outgoing_queue = queue
 
         self.message = make_message()
+
+    def tearDown(self):
+        pass
+        ##self.incoming_queue.delete()
+        ##self.outgoing_queue.delete()
 
 
     @unittest.skip("Not wanted")
@@ -74,7 +86,6 @@ class TestRegisterPublisher(unittest.TestCase):
         self.assertEqual(self.message, message.payload)
 
 
-    @unittest.skip("Ignore")
     def test_incoming_queue(self):
         """ Basic check of 'incoming' message via default direct exchange """
 
@@ -98,8 +109,7 @@ class TestRegisterPublisher(unittest.TestCase):
             queue.delete()
 
             if message:
-                handle_message(message.body, message)
-                self.assertEqual(self.message, message.payload)
+                self.handle_message(message.body, message)
             else:
                 self.fail("No message received")
 
@@ -126,16 +136,19 @@ class TestRegisterPublisher(unittest.TestCase):
         time.sleep(10)
         exchange=server.outgoing_exchange
         queue_name=server.OUTGOING_QUEUE
-        with server.setup_consumer(exchange=exchange, queue_name=queue_name) as consumer:
+        callback = self.handle_message
 
-            queue = consumer.queues[0]
+        with server.setup_consumer(exchange=exchange, queue_name=queue_name, callback=callback) as consumer:
+            consumer.consume()
 
-            message = queue.get()
-            logger.info("Got message, queue: {}, {}".format(message.body, queue.name))
+            with stopit.ThreadingTimeout(10) as to_ctx_mgr:
+                assert to_ctx_mgr.state == to_ctx_mgr.EXECUTING
 
-            if message:
-                handle_message(message.body, message)
-                self.assertEqual(self.message, message.payload)
-            else:
-                self.fail("No message received")
+                try:
+                    consumer.connection.drain_events()
+                except Exception as e:
+                    logger.error(e)
+
+            if to_ctx_mgr.state == to_ctx_mgr.TIMED_OUT:
+                logger.error("Message not consumed!")
 

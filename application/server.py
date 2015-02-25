@@ -1,5 +1,4 @@
 #!/bin/python
-import pdb
 import os
 import logging
 import stopit
@@ -36,7 +35,7 @@ outgoing_exchange = kombu.Exchange(type="fanout")
 # Set up root logger
 def setup_logger(name=__name__):
     ll = app.config['LOG_LEVEL']
-    FORMAT = "[%(filename)s:%(lineno)s - %(funcName)20s() ] %(message)s"
+    FORMAT = "[%(asctime)s %(filename)s:%(lineno)s - %(funcName)20s() ] %(message)s"
     filename = "{}.log".format(name)
     logging.basicConfig(filename=filename, format=FORMAT, level=ll)
 
@@ -107,10 +106,10 @@ def setup_queue(channel, name=None, exchange=incoming_exchange, key=None):
     if name is None or exchange is None:
         raise RuntimeError("setup_queue: queue/exchange name required!")
 
-    ##pdb.set_trace()
     routing_key = name if key is None else key
     queue = kombu.Queue(name=name, exchange=exchange, routing_key=routing_key)
     queue.maybe_bind(channel)
+    ##queue.auto_delete = True
 
     # VIP: ensure that queue is declared!
     # [IMO, this should have been done by default via the 'bind' operation].
