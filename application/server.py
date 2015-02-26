@@ -125,6 +125,10 @@ def setup_queue(channel, name=None, exchange=incoming_exchange, key=None):
 
 def run():
 
+    ##import sys
+    ##logger.info("sys.path: {}".format(sys.path))
+    ##logger.info("os.environ['COVERAGE_PROCESS_START']: {}".format(os.environ['COVERAGE_PROCESS_START']))
+
     # Producer for outgoing (default) exchange.
     producer = setup_producer()
 
@@ -145,12 +149,12 @@ def run():
     consumer.consume()
 
     # Loop "forever", as a service.
-    while True:
-        try:
+    try:
+        while True:
+            # "Wait for a single event from the server".
             consumer.connection.drain_events()
-        except Exception as e:
-            logger.error(e)
-            break
+    except Exception as e:
+        logger.error(e)
 
     # Graceful degradation.
     producer.close()

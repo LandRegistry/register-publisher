@@ -138,8 +138,11 @@ class TestRegisterPublisher(unittest.TestCase):
         callback = self.handle_message
 
         with server.setup_consumer(exchange=exchange, queue_name=queue_name, callback=callback) as consumer:
+
+            # 'consume' may be a misnomer here - it just initiates the consumption process, I believe.
             consumer.consume()
 
+            # Execute 'drain_events()' loop in a time-out thread, in case it gets stuck.
             with stopit.ThreadingTimeout(10) as to_ctx_mgr:
                 assert to_ctx_mgr.state == to_ctx_mgr.EXECUTING
 
