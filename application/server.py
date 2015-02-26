@@ -3,6 +3,7 @@ import os
 import logging
 import stopit
 import kombu
+import time
 from flask import Flask
 from kombu.common import maybe_declare
 from amqp import AccessRefused
@@ -149,12 +150,22 @@ def run():
     consumer.consume()
 
     # Loop "forever", as a service.
-    try:
-        while True:
+    # N.B.: if there is a serious network failure or the like then this will keep logging errors!
+    while True:
+        try:
             # "Wait for a single event from the server".
             consumer.connection.drain_events()
-    except Exception as e:
-        logger.error(e)
+
+        # Permit an explicit abort.
+        except KeyboardInterrupt:
+            logger.error("KeyboardInterrupt received!")
+            break
+        # Trap (log) everything else.
+        except Exception as e:
+            logger.error(e)
+
+            # If we ignore the problem, perhaps it will go away ...
+            time.sleep(10)
 
     # Graceful degradation.
     producer.close()

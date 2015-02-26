@@ -32,13 +32,13 @@ class TestRegisterPublisher(unittest.TestCase):
 
     #: This can be the callback applied when a message is received - i.e. "consume()" case.
     def handle_message(self, body, message):
-        logger.info('Received message: {}'.format(body))
+        # Note: 'body' may have been pickled, so refer to 'payload' instead.
+        logger.info('Received message: {}'.format(message.payload))
         logger.info(' properties: {}'.format(message.properties))
         logger.info(' delivery_info: {}'.format(message.delivery_info))
         message.ack()
 
-        # Note: 'body' may have been pickled, so refer to 'payload' instead.
-        self.assertEqual(self.message, message.payload)
+        self.payload = message.payload
 
     def setUp(self):
         """ Establish connection and other resources; prepare """
@@ -51,40 +51,28 @@ class TestRegisterPublisher(unittest.TestCase):
             # We also need relevant queues established before publishing to exchange!
             queue = server.setup_queue(connection, name=server.INCOMING_QUEUE, exchange=server.incoming_exchange)
             queue.purge()
-            self.incoming_queue = queue
 
             queue = server.setup_queue(connection, name=server.OUTGOING_QUEUE, exchange=server.outgoing_exchange)
             queue.purge()
-            self.outgoing_queue = queue
 
+        # Message to be sent.
         self.message = make_message()
 
+        # Corresponding 'payload' of message received.
+        self.payload = None
+
     def tearDown(self):
-        pass
-        ##self.incoming_queue.delete()
-        ##self.outgoing_queue.delete()
-
-
-    @unittest.skip("Not wanted")
-    def test_simple_queue(self):
-        """ Basic check of message send/get via 'simple' interface """
 
         with server.setup_connection() as connection:
-            with connection.SimpleQueue('simple_queue') as queue:
-                queue.put(self.message)
-                logger.info("Sent message: {}".format(self.message))
 
-        # Wait a bit - one second should be long enough.
-        time.sleep(1)
+            # Need a connection to delete the queues.
+            self.assertEqual(connection.connected, True)
 
-        with server.setup_connection() as connection:
-            with connection.SimpleQueue('simple_queue') as queue:
-                message = queue.get(block=True, timeout=1)
-                logger.info("Received: {}".format(message.payload))
-                message.ack()
+            queue = server.setup_queue(connection, name=server.INCOMING_QUEUE, exchange=server.incoming_exchange)
+            queue.delete()
 
-        self.assertEqual(self.message, message.payload)
-
+            queue = server.setup_queue(connection, name=server.OUTGOING_QUEUE, exchange=server.outgoing_exchange)
+            queue.delete()
 
     def test_incoming_queue(self):
         """ Basic check of 'incoming' message via default direct exchange """
@@ -110,9 +98,8 @@ class TestRegisterPublisher(unittest.TestCase):
 
             if message:
                 self.handle_message(message.body, message)
-            else:
-                self.fail("No message received")
 
+            self.assertEqual(self.message, self.payload)
 
     # N.B.: this test reverses the default 'producer' and 'consumer' targets.
     def test_end_to_end(self):
@@ -154,3 +141,4 @@ class TestRegisterPublisher(unittest.TestCase):
             if to_ctx_mgr.state == to_ctx_mgr.TIMED_OUT:
                 logger.error("Message not consumed!")
 
+        self.assertEqual(self.message, self.payload)
