@@ -133,7 +133,6 @@ class TestRegisterPublisher(unittest.TestCase):
         server_run.terminate()
 
         # Consume (poll) message from outgoing exchange.
-        time.sleep(10)
         exchange=server.outgoing_exchange
         queue_name=server.OUTGOING_QUEUE
         callback = self.handle_message
