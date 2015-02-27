@@ -10,8 +10,10 @@ This service will forward messages from the "System of Record" queue to the "fee
 
 
 ##dependencies:
+
 - See 'requirements.txt'; in particular, additions for 'kombu' and 'stopit'.
 - An AMQP broker is required, typically "RabbitMQ".
+
 
 ##how to run in development
 
@@ -47,4 +49,23 @@ if executing tests directly on host:
 
 ```
 ./test.sh
+```
+
+##How to manage rabbitmq:
+Status of the server
+
+```
+service rabbitmq-server status
+```
+
+Stop the server
+
+```
+service rabbitmq-server stop
+```
+
+Start the server
+
+```
+service rabbitmq-server start
 ```
