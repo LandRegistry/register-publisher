@@ -67,6 +67,7 @@ def setup_connection(exchange=None):
         assert to_ctx_mgr.state == to_ctx_mgr.EXECUTING
 
         connection = kombu.Connection(hostname=RP_HOSTNAME)
+        app.logger.info(RP_HOSTNAME)
         connection.connect()
 
     if to_ctx_mgr.state == to_ctx_mgr.TIMED_OUT:
