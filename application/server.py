@@ -1,11 +1,13 @@
 #!/bin/python
-
 import os
 import logging
+import logging.handlers
 import stopit
 import kombu
+import time
 from flask import Flask
 from kombu.common import maybe_declare
+from amqp import AccessRefused
 
 """
 Register-Publisher: forwards messages from the System of Record to the outside world, via AMQP "broadcast".
@@ -34,22 +36,31 @@ outgoing_exchange = kombu.Exchange(type="fanout")
 
 # Set up root logger
 def setup_logger(name=__name__):
-    ll = app.config['LOG_LEVEL']
-    FORMAT = "[%(filename)s:%(lineno)s - %(funcName)20s() ] %(message)s"
-    filename = "{}.log".format(name)
-    logging.basicConfig(filename=filename, format=FORMAT, level=ll)
 
+    ll = app.config['LOG_LEVEL']
     logger = logging.getLogger(name)
+    logger.setLevel(ll)
+    formatter = logging.Formatter("%(asctime)s %(filename)-12.12s#%(lineno)-5.5s %(funcName)-20.20s %(message)s")
+
+    # Add 'rotating' file handler.
+    filename = "{}.log".format(name)
+    handler = logging.handlers.RotatingFileHandler(filename, maxBytes=(1048576*5), backupCount=7)
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+
+    # Add 'console' handler, for errors only.
+    handler = logging.StreamHandler()
+    handler.setFormatter(formatter)
+    handler.setLevel(logging.ERROR)
+    logger.addHandler(handler)
 
     return logger
 
 logger = setup_logger()
 
-# Helper functions, mostly to aid testing.
-def setup_connection():
-    """
-    Attempt connection, with timeout.
-    """
+# RabbitMQ connection/channel; default user/password.
+def setup_connection(exchange=None):
+    """ Attempt connection, with timeout. """
 
     # Attempt connection in a separate thread, as (implied) 'connect' call hangs if permissions not set etc.
     with stopit.ThreadingTimeout(10) as to_ctx_mgr:
@@ -66,40 +77,45 @@ def setup_connection():
 
     logger.info("URI: {}".format(connection.as_uri()))
 
+    # Bind/Declare exchange on broker if necessary.
+    if exchange is not None:
+        exchange.maybe_bind(connection)
+        maybe_declare(exchange, connection)
+
     return connection
 
 
-# Producer, for single 'outgoing' queue by default.
-def setup_producer(connection, exchange=outgoing_exchange, queue_name=OUTGOING_QUEUE, serializer='json'):
+# Producer, for 'outgoing' exchange by default.
+def setup_producer(connection=None, exchange=outgoing_exchange, serializer='json'):
 
-    producer = kombu.Producer(connection, exchange=exchange, serializer=serializer)
+    channel = setup_connection(exchange) if connection is None else connection
+    logger.info("channel: {}".format(channel))
+    logger.info("exchange: {}".format(exchange))
 
-    # Can only publish to a queue.
-    queue = setup_queue(connection, name=queue_name, exchange=exchange)
-    logger.info("publisher queue: {}".format(queue.name))
+    producer = kombu.Producer(channel, exchange=exchange, serializer=serializer)
 
-    # Create exchange on broker if necessary.
-    maybe_declare(exchange, connection)
-
-    return producer, queue
+    return producer
 
 
 # Consumer, for 'incoming' queue by default.
-def setup_consumer(connection, exchange=incoming_exchange, queue_name=INCOMING_QUEUE, callback=None):
+def setup_consumer(connection=None, exchange=incoming_exchange, queue_name=INCOMING_QUEUE, callback=None):
     """ Create consumer with single queue and callback """
 
-    # Create exchange on broker if necessary.
-    maybe_declare(exchange, connection)
+    channel = setup_connection(exchange) if connection is None else connection
+    logger.info("channel: {}".format(channel))
+    logger.info("exchange: {}".format(exchange))
+    logger.info("queue: {}".format(queue_name))
 
-    queue = setup_queue(connection, name=queue_name, exchange=exchange)
-    logger.info("consumer queue: {}".format(queue.name))
+    # A consumer needs a queue, so create one (if necessary).
+    queue = setup_queue(channel, name=queue_name, exchange=exchange)
+    logger.info("queue: {}".format(queue.name))
 
-    consumer = kombu.Consumer(connection, queues=queue, callbacks=[callback], accept=['json'])
+    consumer = kombu.Consumer(channel, queues=queue, callbacks=[callback], accept=['json'])
 
-    return consumer, queue
+    return consumer
 
 
-def setup_queue(connection, name=None, exchange=None, key=None):
+def setup_queue(channel, name=None, exchange=incoming_exchange, key=None):
     """ Return bound queue """
 
     if name is None or exchange is None:
@@ -107,8 +123,15 @@ def setup_queue(connection, name=None, exchange=None, key=None):
 
     routing_key = name if key is None else key
     queue = kombu.Queue(name=name, exchange=exchange, routing_key=routing_key)
-    queue.maybe_bind(connection)
-    queue.declare()
+    queue.maybe_bind(channel)
+
+    # VIP: ensure that queue is declared! If it isn't, we can send message to queue but they die, silently :-(
+    # [IMO, this should have been done by default via the 'bind' operation].
+    try:
+        queue.declare()
+    # 'AccessRefused' raised by kombu if queue already declared.
+    except AccessRefused:
+        pass
 
     logger.info("queue name, exchange, key: {}, {}, {}".format(name, exchange, routing_key))
 
@@ -117,11 +140,8 @@ def setup_queue(connection, name=None, exchange=None, key=None):
 
 def run():
 
-    # RabbitMQ connection/channel; default user/password.
-    connection = setup_connection()
-
     # Producer for outgoing (default) exchange.
-    producer = setup_producer(connection)
+    producer = setup_producer()
 
     # This is used to consume messages from the "System of Record", then forward them to the outside world.
     # @TO DO: This may unpack incoming messages, then pack them again when forwarding; consider 'on_message()' instead.
@@ -130,27 +150,39 @@ def run():
         ''' Forward messages from the 'System of Record' to the outside world '''
 
         logger.info("RECEIVED MSG - delivery_info: {}".format(message.delivery_info))
-        message.ack()
 
         # Forward message to outgoing exchange.
-        producer.publish(body=body)
+        producer.publish(body=body, routing_key=OUTGOING_QUEUE)
 
-    # Create consumer with default queue.
-    consumer = setup_consumer(connection, callback=process_message)
+        # Acknowledge message only after publish(); if that fails. message is still in queue.
+        message.ack()
 
+    # Create consumer with default exchange/queue.
+    consumer = setup_consumer(callback=process_message)
+    consumer.consume()
 
     # Loop "forever", as a service.
+    # N.B.: if there is a serious network failure or the like then this will keep logging errors!
     while True:
         try:
-            connection.drain_events()
+            # "Wait for a single event from the server".
+            consumer.connection.drain_events()
+
+        # Permit an explicit abort.
+        except KeyboardInterrupt:
+            logger.error("KeyboardInterrupt received!")
+            break
+        # Trap (log) everything else.
         except Exception as e:
             logger.error(e)
-            break
+
+            # If we ignore the problem, perhaps it will go away ...
+            time.sleep(10)
 
     # Graceful degradation.
-    connection.close()
     producer.close()
     consumer.cancel()
+
 
 if __name__ == "__main__":
     print("This module should be executed as a separate Python process")

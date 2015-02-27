@@ -1,0 +1,5 @@
+# .coveragerc to control coverage.py
+# See "http://nedbatchelder.com/code/coverage/config.html#config" for details.
+[run]
+branch = True
+
