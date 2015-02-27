@@ -40,10 +40,11 @@ def setup_logger(name=__name__):
     ll = app.config['LOG_LEVEL']
     logger = logging.getLogger(name)
     logger.setLevel(ll)
-    formatter = logging.Formatter("%(asctime)s %(filename)-12.12s#%(lineno)-5.5s %(funcName)-20.20s %(message)s")
+    format = "%(asctime)s %(filename)-12.12s#%(lineno)-5.5s %(funcName)-20.20s %(message)s"
+    formatter = logging.Formatter(format)
 
     # Add 'rotating' file handler.
-    filename = "{}.log".format(name)
+    filename = "{}.log".format(__name__)
     handler = logging.handlers.RotatingFileHandler(filename, maxBytes=(1048576*5), backupCount=7)
     handler.setFormatter(formatter)
     logger.addHandler(handler)

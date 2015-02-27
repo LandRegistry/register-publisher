@@ -69,10 +69,10 @@ class TestRegisterPublisher(unittest.TestCase):
             self.assertEqual(connection.connected, True)
 
             queue = server.setup_queue(connection, name=server.INCOMING_QUEUE, exchange=server.incoming_exchange)
-            queue.delete()
+            ##queue.delete()
 
             queue = server.setup_queue(connection, name=server.OUTGOING_QUEUE, exchange=server.outgoing_exchange)
-            queue.delete()
+            ##queue.delete()
 
     def test_incoming_queue(self):
         """ Basic check of 'incoming' message via default direct exchange """
@@ -116,8 +116,9 @@ class TestRegisterPublisher(unittest.TestCase):
             producer.publish(body=self.message, routing_key=server.INCOMING_QUEUE)
             logger.info(self.message)
 
-       # Wait a bit - one second should be long enough.
-        server_run.join(timeout=1)
+        # Wait long enough for message to be picked up.
+        # N.B.: 1 second may be insufficient, for a full coverage check during testing.
+        server_run.join(timeout=5)
         logger.info("'server.run()' completed")
         server_run.terminate()
         logger.info("'server.run()' terminated")
@@ -135,13 +136,7 @@ class TestRegisterPublisher(unittest.TestCase):
             # Execute 'drain_events()' loop in a time-out thread, in case it gets stuck.
             logger.info("'drain_events()' with timeout")
             try:
-                with stopit.ThreadingTimeout(10) as to_ctx_mgr:
-                    assert to_ctx_mgr.state == to_ctx_mgr.EXECUTING
-                    consumer.connection.drain_events()
-
-                if to_ctx_mgr.state == to_ctx_mgr.TIMED_OUT:
-                    raise RuntimeError("Message not consumed!")
-
+                consumer.connection.drain_events(timeout=5)
             except Exception as e:
                 logger.error(e)
             finally:
