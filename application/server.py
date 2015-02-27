@@ -1,6 +1,7 @@
 #!/bin/python
 import os
 import logging
+import logging.handlers
 import stopit
 import kombu
 import time
@@ -35,12 +36,23 @@ outgoing_exchange = kombu.Exchange(type="fanout")
 
 # Set up root logger
 def setup_logger(name=__name__):
-    ll = app.config['LOG_LEVEL']
-    FORMAT = "[%(asctime)s %(filename)s:%(lineno)s - %(funcName)20s() ] %(message)s"
-    filename = "{}.log".format(name)
-    logging.basicConfig(filename=filename, format=FORMAT, level=ll)
 
+    ll = app.config['LOG_LEVEL']
     logger = logging.getLogger(name)
+    logger.setLevel(ll)
+    formatter = logging.Formatter("%(asctime)s %(filename)-12.12s#%(lineno)-5.5s %(funcName)-20.20s %(message)s")
+
+    # Add 'rotating' file handler.
+    filename = "{}.log".format(name)
+    handler = logging.handlers.RotatingFileHandler(filename, maxBytes=(1048576*5), backupCount=7)
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+
+    # Add 'console' handler, for errors only.
+    handler = logging.StreamHandler()
+    handler.setFormatter(formatter)
+    handler.setLevel(logging.ERROR)
+    logger.addHandler(handler)
 
     return logger
 
@@ -93,6 +105,7 @@ def setup_consumer(connection=None, exchange=incoming_exchange, queue_name=INCOM
     logger.info("exchange: {}".format(exchange))
     logger.info("queue: {}".format(queue_name))
 
+    # A consumer needs a queue, so create one (if necessary).
     queue = setup_queue(channel, name=queue_name, exchange=exchange)
     logger.info("queue: {}".format(queue.name))
 
@@ -110,12 +123,12 @@ def setup_queue(channel, name=None, exchange=incoming_exchange, key=None):
     routing_key = name if key is None else key
     queue = kombu.Queue(name=name, exchange=exchange, routing_key=routing_key)
     queue.maybe_bind(channel)
-    ##queue.auto_delete = True
 
-    # VIP: ensure that queue is declared!
+    # VIP: ensure that queue is declared! If it isn't, we can send message to queue but they die, silently :-(
     # [IMO, this should have been done by default via the 'bind' operation].
     try:
         queue.declare()
+    # 'AccessRefused' raised by kombu if queue already declared.
     except AccessRefused:
         pass
 
@@ -125,10 +138,6 @@ def setup_queue(channel, name=None, exchange=incoming_exchange, key=None):
 
 
 def run():
-
-    ##import sys
-    ##logger.info("sys.path: {}".format(sys.path))
-    ##logger.info("os.environ['COVERAGE_PROCESS_START']: {}".format(os.environ['COVERAGE_PROCESS_START']))
 
     # Producer for outgoing (default) exchange.
     producer = setup_producer()
@@ -140,10 +149,12 @@ def run():
         ''' Forward messages from the 'System of Record' to the outside world '''
 
         logger.info("RECEIVED MSG - delivery_info: {}".format(message.delivery_info))
-        message.ack()
 
         # Forward message to outgoing exchange.
         producer.publish(body=body, routing_key=OUTGOING_QUEUE)
+
+        # Acknowledge message only after publish(); if that fails. message is still in queue.
+        message.ack()
 
     # Create consumer with default exchange/queue.
     consumer = setup_consumer(callback=process_message)
