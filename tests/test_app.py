@@ -106,6 +106,7 @@ class TestRegisterPublisher(unittest.TestCase):
         """ Send message from dummy "System Of Record", then consume and check it. """
 
         # Execute 'run()' as a separate process.
+        logger.info("Starting 'server.run()' with timeout")
         server_run = Process(target=server.run)
         server_run.start()
 
@@ -117,7 +118,9 @@ class TestRegisterPublisher(unittest.TestCase):
 
        # Wait a bit - one second should be long enough.
         server_run.join(timeout=1)
+        logger.info("'server.run()' completed")
         server_run.terminate()
+        logger.info("'server.run()' terminated")
 
         # Consume (poll) message from outgoing exchange.
         exchange=server.outgoing_exchange
@@ -130,15 +133,20 @@ class TestRegisterPublisher(unittest.TestCase):
             consumer.consume()
 
             # Execute 'drain_events()' loop in a time-out thread, in case it gets stuck.
-            with stopit.ThreadingTimeout(10) as to_ctx_mgr:
-                assert to_ctx_mgr.state == to_ctx_mgr.EXECUTING
-
-                try:
+            logger.info("'drain_events()' with timeout")
+            try:
+                with stopit.ThreadingTimeout(10) as to_ctx_mgr:
+                    assert to_ctx_mgr.state == to_ctx_mgr.EXECUTING
                     consumer.connection.drain_events()
-                except Exception as e:
-                    logger.error(e)
 
-            if to_ctx_mgr.state == to_ctx_mgr.TIMED_OUT:
-                logger.error("Message not consumed!")
+                if to_ctx_mgr.state == to_ctx_mgr.TIMED_OUT:
+                    raise RuntimeError("Message not consumed!")
+
+            except Exception as e:
+                logger.error(e)
+            finally:
+                consumer.cancel()
+                consumer.close()
+
 
         self.assertEqual(self.message, self.payload)
