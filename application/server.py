@@ -1,85 +1,187 @@
-from flask import Flask, request
-import requests
-from Crypto.PublicKey import RSA
+#!/bin/python
 import os
-import json
-import jws
+import logging
+import logging.handlers
+import stopit
+import kombu
+import time
+from flask import Flask
+from kombu.common import maybe_declare
+from amqp import AccessRefused
 
+"""
+Register-Publisher: forwards messages from the System of Record to the outside world, via AMQP "broadcast".
 
+* AMQP defines four type of exchange, one of which is 'fanout'; that enables clients to subscribe on an 'ad hoc' basis.
+* RabbitMQ etc. should have default exchanges in place; 'amq.fanout' for example.
+* The "System of Record" (SoR) could publish directly to a fanout exchange and indeed used to do so.
+* A separate "Register-Publisher" (RP) module is required to isolate the SoR from the outside world.
+* Thus the SoR publishes to the RP via a 'direct' exchange, which in turn forwards the messages to a 'fanout' exchange.
+
+See http://www.rabbitmq.com/blog/2010/10/19/exchange-to-exchange-bindings for an alternative arrangement, which may be
+unique to RabbitMQ. This might avoid the unpack/pack issue of 'process_message()' but it does not permit logging etc.
+More importantly perhaps, this package acts as a proxy publisher for the System of Record - i.e. security/isolation.
+"""
+
+# Flask is invoked here purely to get the configuration values in a consistent manner!
 app = Flask(__name__)
 app.config.from_object(os.environ.get('SETTINGS'))
 
+# Routing key is same as queue name in "default direct exchange" case; exchange name is blank.
+INCOMING_QUEUE = app.config['INCOMING_QUEUE']
+OUTGOING_QUEUE = app.config['OUTGOING_QUEUE']
+RP_HOSTNAME = app.config['RP_HOSTNAME']
+incoming_exchange = kombu.Exchange(type="direct", durable=True)
+outgoing_exchange = kombu.Exchange(type="fanout")
 
-@app.route("/")
-def check_status():
-    return "Everything is OK"
+# Set up root logger
+def setup_logger(name=__name__):
 
+    ll = app.config['LOG_LEVEL']
+    logger = logging.getLogger(name)
+    logger.setLevel(ll)
+    formatter = logging.Formatter("%(asctime)s %(filename)-12.12s#%(lineno)-5.5s %(funcName)-20.20s %(message)s")
 
-@app.route("/sign", methods=["POST"])
-def new_title_version():
-    title = json.dumps(request.get_json())
-    signed_title = return_signed_data(title)
-    return str(signed_title)
+    # Add 'rotating' file handler.
+    filename = "{}.log".format(name)
+    handler = logging.handlers.RotatingFileHandler(filename, maxBytes=(1048576*5), backupCount=7)
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
 
+    # Add 'console' handler, for errors only.
+    handler = logging.StreamHandler()
+    handler.setFormatter(formatter)
+    handler.setLevel(logging.ERROR)
+    logger.addHandler(handler)
 
-@app.route("/verify", methods=["POST"])
-def verify_title_version():
+    return logger
 
-    signed_title = request.get_json()
+logger = setup_logger()
 
-    signature = signed_title['sig']
+# RabbitMQ connection/channel; default user/password.
+def setup_connection(exchange=None):
+    """ Attempt connection, with timeout. """
 
-    #signed_data is currently unicode.  Incompatible with JWS.  Convert to ASCII
-    signature = signature.encode('ascii', 'ignore')
-    title = json.dumps(signed_title['data'])
+    # Attempt connection in a separate thread, as (implied) 'connect' call hangs if permissions not set etc.
+    with stopit.ThreadingTimeout(10) as to_ctx_mgr:
+        assert to_ctx_mgr.state == to_ctx_mgr.EXECUTING
 
-    # #import keys
-    key_data = open('test_keys/test_public.pem').read()
-    key = RSA.importKey(key_data)
+        connection = kombu.Connection(hostname=RP_HOSTNAME)
+        connection.connect()
 
-    header = { 'alg': 'RS256' }
-    the_result = jws.verify(header, title, signature, key)
-
-    if the_result:
-        return "verified"
-    else:
-        return "you'll never see this message, jws will show its own."
-
-
-@app.route("/insert", methods=["POST"])
-def insert_new_title_version():
-    data_dict = request.get_json()
-    data = json.dumps(data_dict)
-    signed_data = return_signed_data(data)
-    save_this = build_system_of_record_json_string(data_dict, signed_data)
-
-    server = app.config['SYSTEM_OF_RECORD']
-    route = '/insert'
-    url = server + route
-
-    headers = {'Content-Type': 'application/json'}
-
-    response = requests.post(url, data=json.dumps(save_this), headers=headers)
-
-    return response.text
+    if to_ctx_mgr.state == to_ctx_mgr.TIMED_OUT:
+        err_msg = "Connection unavailable: {}".format(RP_HOSTNAME)
+        raise RuntimeError(err_msg)
 
 
-def return_signed_data(data):
+    logger.info("URI: {}".format(connection.as_uri()))
 
-    #import keys
-    key_data = open('test_keys/test_private.pem').read()
-    key = RSA.importKey(key_data)
+    # Bind/Declare exchange on broker if necessary.
+    if exchange is not None:
+        exchange.maybe_bind(connection)
+        maybe_declare(exchange, connection)
 
-    header = { 'alg': 'RS256' }
-
-    sig = jws.sign(header, data, key)
-
-    return str(sig)
+    return connection
 
 
-def build_system_of_record_json_string(original_data_dict, signed_data_string):
+# Producer, for 'outgoing' exchange by default.
+def setup_producer(connection=None, exchange=outgoing_exchange, serializer='json'):
 
-    system_of_record_dict = {"data": original_data_dict, "sig":signed_data_string}
-    system_of_record_json = json.dumps(system_of_record_dict)
+    channel = setup_connection(exchange) if connection is None else connection
+    logger.info("channel: {}".format(channel))
+    logger.info("exchange: {}".format(exchange))
 
-    return system_of_record_json
+    producer = kombu.Producer(channel, exchange=exchange, serializer=serializer)
+
+    return producer
+
+
+# Consumer, for 'incoming' queue by default.
+def setup_consumer(connection=None, exchange=incoming_exchange, queue_name=INCOMING_QUEUE, callback=None):
+    """ Create consumer with single queue and callback """
+
+    channel = setup_connection(exchange) if connection is None else connection
+    logger.info("channel: {}".format(channel))
+    logger.info("exchange: {}".format(exchange))
+    logger.info("queue: {}".format(queue_name))
+
+    # A consumer needs a queue, so create one (if necessary).
+    queue = setup_queue(channel, name=queue_name, exchange=exchange)
+    logger.info("queue: {}".format(queue.name))
+
+    consumer = kombu.Consumer(channel, queues=queue, callbacks=[callback], accept=['json'])
+
+    return consumer
+
+
+def setup_queue(channel, name=None, exchange=incoming_exchange, key=None):
+    """ Return bound queue """
+
+    if name is None or exchange is None:
+        raise RuntimeError("setup_queue: queue/exchange name required!")
+
+    routing_key = name if key is None else key
+    queue = kombu.Queue(name=name, exchange=exchange, routing_key=routing_key)
+    queue.maybe_bind(channel)
+
+    # VIP: ensure that queue is declared! If it isn't, we can send message to queue but they die, silently :-(
+    # [IMO, this should have been done by default via the 'bind' operation].
+    try:
+        queue.declare()
+    # 'AccessRefused' raised by kombu if queue already declared.
+    except AccessRefused:
+        pass
+
+    logger.info("queue name, exchange, key: {}, {}, {}".format(name, exchange, routing_key))
+
+    return queue
+
+
+def run():
+
+    # Producer for outgoing (default) exchange.
+    producer = setup_producer()
+
+    # This is used to consume messages from the "System of Record", then forward them to the outside world.
+    # @TO DO: This may unpack incoming messages, then pack them again when forwarding; consider 'on_message()' instead.
+    # ['body' is decoded content, 'message' is the packet as a whole].
+    def process_message(body, message):
+        ''' Forward messages from the 'System of Record' to the outside world '''
+
+        logger.info("RECEIVED MSG - delivery_info: {}".format(message.delivery_info))
+
+        # Forward message to outgoing exchange.
+        producer.publish(body=body, routing_key=OUTGOING_QUEUE)
+
+        # Acknowledge message only after publish(); if that fails. message is still in queue.
+        message.ack()
+
+    # Create consumer with default exchange/queue.
+    consumer = setup_consumer(callback=process_message)
+    consumer.consume()
+
+    # Loop "forever", as a service.
+    # N.B.: if there is a serious network failure or the like then this will keep logging errors!
+    while True:
+        try:
+            # "Wait for a single event from the server".
+            consumer.connection.drain_events()
+
+        # Permit an explicit abort.
+        except KeyboardInterrupt:
+            logger.error("KeyboardInterrupt received!")
+            break
+        # Trap (log) everything else.
+        except Exception as e:
+            logger.error(e)
+
+            # If we ignore the problem, perhaps it will go away ...
+            time.sleep(10)
+
+    # Graceful degradation.
+    producer.close()
+    consumer.cancel()
+
+
+if __name__ == "__main__":
+    print("This module should be executed as a separate Python process")

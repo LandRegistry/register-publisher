@@ -1,53 +1,144 @@
-import unittest
-from application import server
-from application.server import app
-from application.server import build_system_of_record_json_string
-from application.server import return_signed_data
+#!/bin/python
 import os
+import json
+import unittest
+import time
+import datetime
+import stopit
+from multiprocessing import Process
+from application import server
+from flask import Flask
 
-import mock
+"""
+Test Register-Publisher on an 'ad hoc' basis or automatically (pytest).
+Pretend to be "System Of Record" publisher.
+"""
 
-TEST_TITLE = '{"titleno": "DN1"}'
-TEST_SIGNATURE = "b6vjrGcLzq97_2D5h286TkRu_Kf0GonPDsndkGjhtrTBlHKIcF5H18hu635VEork_kr811ZS7B-4FuaCQFk6CvIQpNhxaMxI7m56HRQnj8ZsRSkX74xEKQUqf3k26ZdkODWJVsKyd_grJ39tfwMvJJb9V5REpRa8qXGr1eXgK4gEqwmo2fkow_W8q_yqMTTm9jOuVeFaqCQzAJBFUEWgkuTLRd91Wm8MlF4RhG_w1YktGzVath3tvaiTXNfiyfZbzPu9viotpP81gsFpWw6xocrUDbKhhXw2rm0BU2NvqSMXJ3X1qZs-VZibnWRJNNyt3sFapDojlDs99cL_uQ2aBQ"
-VERIFY_DATA = '{"sig" : "b6vjrGcLzq97_2D5h286TkRu_Kf0GonPDsndkGjhtrTBlHKIcF5H18hu635VEork_kr811ZS7B-4FuaCQFk6CvIQpNhxaMxI7m56HRQnj8ZsRSkX74xEKQUqf3k26ZdkODWJVsKyd_grJ39tfwMvJJb9V5REpRa8qXGr1eXgK4gEqwmo2fkow_W8q_yqMTTm9jOuVeFaqCQzAJBFUEWgkuTLRd91Wm8MlF4RhG_w1YktGzVath3tvaiTXNfiyfZbzPu9viotpP81gsFpWw6xocrUDbKhhXw2rm0BU2NvqSMXJ3X1qZs-VZibnWRJNNyt3sFapDojlDs99cL_uQ2aBQ", "data":{"titleno" : "DN1"}}'
+# Flask is used here purely for configuration purposes.
+app = Flask(__name__)
+app.config.from_object(os.environ.get('SETTINGS'))
 
-class TestSequenceFunctions(unittest.TestCase):
+# Set up root logger
+ll = app.config['LOG_LEVEL']
+logger = server.setup_logger(__name__)
+
+# Basic test data.
+def make_message():
+    dt=str(datetime.datetime.now())
+    return json.dumps(dt.split())
+
+
+class TestRegisterPublisher(unittest.TestCase):
+
+    #: This can be the callback applied when a message is received - i.e. "consume()" case.
+    def handle_message(self, body, message):
+        # Note: 'body' may have been pickled, so refer to 'payload' instead.
+        logger.info('Received message: {}'.format(message.payload))
+        logger.info(' properties: {}'.format(message.properties))
+        logger.info(' delivery_info: {}'.format(message.delivery_info))
+        message.ack()
+
+        self.payload = message.payload
 
     def setUp(self):
-        app.config.from_object(os.environ.get('SETTINGS'))
-        self.app = server.app.test_client()
+        """ Establish connection and other resources; prepare """
 
-    def test_server(self):
-        self.assertEqual((self.app.get('/')).status, '200 OK')
+        with server.setup_connection() as connection:
 
-    def test_build_system_of_record_json_string(self):
-        test_string = build_system_of_record_json_string({"a":"1"}, {"b":"2" })
-        self.assertEqual('{"sig": {"b": "2"}, "data": {"a": "1"}}', test_string)
+            # Ensure that message broker is alive
+            self.assertEqual(connection.connected, True)
 
-    def test_return_signed_data(self):
-        signed_string = return_signed_data(TEST_TITLE)
-        self.assertEqual(signed_string, TEST_SIGNATURE)
+            # We also need relevant queues established before publishing to exchange!
+            queue = server.setup_queue(connection, name=server.INCOMING_QUEUE, exchange=server.incoming_exchange)
+            queue.purge()
 
-    def test_sign_route(self):
-        headers = {'content-Type': 'application/json'}
-        response = self.app.post('/sign', data = TEST_TITLE, headers = headers)
-        self.assertEqual(response.status, '200 OK')
-        self.assertEqual(response.data, TEST_SIGNATURE)
+            queue = server.setup_queue(connection, name=server.OUTGOING_QUEUE, exchange=server.outgoing_exchange)
+            queue.purge()
 
-    def test_verify_route(self):
-        headers = {'content-Type': 'application/json'}
-        response = self.app.post('/verify', data = VERIFY_DATA, headers = headers)
-        self.assertEqual(response.status, '200 OK')
-        self.assertEqual(response.data, "verified")
+        # Message to be sent.
+        self.message = make_message()
 
-    @mock.patch('requests.post')
-    @mock.patch('requests.Response')
-    def test_insert_route(self, mock_response, mock_post):
-        mock_response.text = "row inserted"
-        mock_post.return_value = mock_response
-        headers = {'content-Type': 'application/json'}
-        response = self.app.post('/insert', data = TEST_TITLE, headers = headers)
-        self.assertEqual(response.data, "row inserted")
+        # Corresponding 'payload' of message received.
+        self.payload = None
 
+    def tearDown(self):
 
+        with server.setup_connection() as connection:
 
+            # Need a connection to delete the queues.
+            self.assertEqual(connection.connected, True)
+
+            queue = server.setup_queue(connection, name=server.INCOMING_QUEUE, exchange=server.incoming_exchange)
+            queue.delete()
+
+            queue = server.setup_queue(connection, name=server.OUTGOING_QUEUE, exchange=server.outgoing_exchange)
+            queue.delete()
+
+    def test_incoming_queue(self):
+        """ Basic check of 'incoming' message via default direct exchange """
+
+        exchange = server.incoming_exchange
+        queue_name = server.INCOMING_QUEUE
+
+        with server.setup_connection() as connection:
+            producer = server.setup_producer(connection, exchange=exchange)
+            producer.publish(body=self.message, routing_key=queue_name)
+            logger.info("Put message, exchange: {}, {}".format(self.message, exchange))
+
+       # Wait a bit - one second should be long enough.
+        time.sleep(1)
+
+        with server.setup_connection() as connection:
+            consumer = server.setup_consumer(connection, exchange=exchange, queue_name=queue_name)
+            queue = consumer.queues[0]
+            message = queue.get()
+            logger.info("Got message, queue: {}, {}".format(message.body, queue.name))
+
+            queue.delete()
+
+            if message:
+                self.handle_message(message.body, message)
+
+            self.assertEqual(self.message, self.payload)
+
+    # N.B.: this test reverses the default 'producer' and 'consumer' targets.
+    def test_end_to_end(self):
+        """ Send message from dummy "System Of Record", then consume and check it. """
+
+        # Execute 'run()' as a separate process.
+        server_run = Process(target=server.run)
+        server_run.start()
+
+        # Send a message to 'incoming' exchange - i.e. as if from SoR.
+        exchange=server.incoming_exchange
+        with server.setup_producer(exchange=exchange) as producer:
+            producer.publish(body=self.message, routing_key=server.INCOMING_QUEUE)
+            logger.info(self.message)
+
+       # Wait a bit - one second should be long enough.
+        server_run.join(timeout=1)
+        server_run.terminate()
+
+        # Consume (poll) message from outgoing exchange.
+        exchange=server.outgoing_exchange
+        queue_name=server.OUTGOING_QUEUE
+        callback = self.handle_message
+
+        with server.setup_consumer(exchange=exchange, queue_name=queue_name, callback=callback) as consumer:
+
+            # 'consume' may be a misnomer here - it just initiates the consumption process, I believe.
+            consumer.consume()
+
+            # Execute 'drain_events()' loop in a time-out thread, in case it gets stuck.
+            with stopit.ThreadingTimeout(10) as to_ctx_mgr:
+                assert to_ctx_mgr.state == to_ctx_mgr.EXECUTING
+
+                try:
+                    consumer.connection.drain_events()
+                except Exception as e:
+                    logger.error(e)
+
+            if to_ctx_mgr.state == to_ctx_mgr.TIMED_OUT:
+                logger.error("Message not consumed!")
+
+        self.assertEqual(self.message, self.payload)

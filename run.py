@@ -1,3 +1,3 @@
-from application.server import app
+from application.server import run
 
-app.run(debug=True, host="0.0.0.0", port=5010)
+run()
