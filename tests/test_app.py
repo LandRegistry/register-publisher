@@ -1,26 +1,23 @@
 #!/bin/python
-import os
+import sys; sys.path.insert(0, 'c:\\Users\\User\\register-publisher')
 import json
 import unittest
 import time
 import datetime
-import stopit
 from multiprocessing import Process
 from application import server
-from flask import Flask
 
 """
 Test Register-Publisher on an 'ad hoc' basis or automatically (pytest).
 Pretend to be "System Of Record" publisher.
 """
 
-# Flask is used here purely for configuration purposes.
-app = Flask(__name__)
-app.config.from_object(os.environ.get('SETTINGS'))
-
 # Set up root logger
-ll = app.config['LOG_LEVEL']
-logger = server.setup_logger(__name__)
+logger = server.logger
+# logger = server.setup_logger()
+# logger.debug("TEST DEBUG")
+# logger.info("TEST INFO")
+# logger.error("TEST ERROR")
 
 # Basic test data.
 def make_message():
@@ -69,10 +66,10 @@ class TestRegisterPublisher(unittest.TestCase):
             self.assertEqual(connection.connected, True)
 
             queue = server.setup_queue(connection, name=server.INCOMING_QUEUE, exchange=server.incoming_exchange)
-            ##queue.delete()
+            queue.delete()
 
             queue = server.setup_queue(connection, name=server.OUTGOING_QUEUE, exchange=server.outgoing_exchange)
-            ##queue.delete()
+            queue.delete()
 
     def test_incoming_queue(self):
         """ Basic check of 'incoming' message via default direct exchange """
@@ -145,3 +142,7 @@ class TestRegisterPublisher(unittest.TestCase):
 
 
         self.assertEqual(self.message, self.payload)
+
+
+if __name__ == '__main__':
+    unittest.main()

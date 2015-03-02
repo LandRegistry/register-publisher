@@ -1,5 +1,6 @@
 #!/bin/python
 import os
+import sys
 import logging
 import logging.handlers
 import stopit
@@ -34,30 +35,39 @@ RP_HOSTNAME = app.config['RP_HOSTNAME']
 incoming_exchange = kombu.Exchange(type="direct", durable=True)
 outgoing_exchange = kombu.Exchange(type="fanout")
 
-# Set up root logger
+# Logger-independent output to 'stderr'.
+def echo(message):
+    print('\n' + message, file=sys.stderr)
+
+# Set up logger
 def setup_logger(name=__name__):
 
-    ll = app.config['LOG_LEVEL']
+    # Specify base logging threshold level.
+    ll = app.config['LOG_THRESHOLD_LEVEL']
     logger = logging.getLogger(name)
     logger.setLevel(ll)
-    format = "%(asctime)s %(filename)-12.12s#%(lineno)-5.5s %(funcName)-20.20s %(message)s"
-    formatter = logging.Formatter(format)
 
-    # Add 'rotating' file handler.
-    filename = "{}.log".format(__name__)
-    handler = logging.handlers.RotatingFileHandler(filename, maxBytes=(1048576*5), backupCount=7)
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
+    # Formatter for log records.
+    FORMAT = "%(asctime)s %(filename)-12.12s#%(lineno)-5.5s %(funcName)-20.20s %(message)s"
+    formatter = logging.Formatter(FORMAT)
+
+    # Add 'timed rotating' file handler, for DEBUG-level messages or above.
+    # WARNING: do not use RotatingFileHandler, as this may result in a "ResourceWarning: unclosed file" fault!
+    filename = "{}.log".format(name)
+    file_handler = logging.handlers.TimedRotatingFileHandler(filename, when='D')
+    file_handler.setFormatter(formatter)
+    file_handler.setLevel(logging.DEBUG)
+    logger.addHandler(file_handler)
 
     # Add 'console' handler, for errors only.
-    handler = logging.StreamHandler()
-    handler.setFormatter(formatter)
-    handler.setLevel(logging.ERROR)
-    logger.addHandler(handler)
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(formatter)
+    stream_handler.setLevel(logging.ERROR)
+    logger.addHandler(stream_handler)
 
     return logger
 
-logger = setup_logger()
+logger = setup_logger('Register-Publisher')
 
 # RabbitMQ connection/channel; default user/password.
 def setup_connection(exchange=None):
@@ -141,6 +151,8 @@ def setup_queue(channel, name=None, exchange=incoming_exchange, key=None):
 
 def run():
 
+    echo("LOG_THRESHOLD_LEVEL = {}".format(logger.getEffectiveLevel()))
+
     # Producer for outgoing (default) exchange.
     producer = setup_producer()
 
@@ -182,7 +194,7 @@ def run():
 
     # Graceful degradation.
     producer.close()
-    consumer.cancel()
+    consumer.close()
 
 
 if __name__ == "__main__":
