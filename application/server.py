@@ -129,14 +129,14 @@ def setup_consumer(connection=None, exchange=incoming_exchange, queue_name=INCOM
     return consumer
 
 
-def setup_queue(channel, name=None, exchange=incoming_exchange, key=None):
-    """ Return bound queue """
+def setup_queue(channel, name=None, exchange=incoming_exchange, key=None, durable=True):
+    """ Return bound queue, "durable" by default """
 
     if name is None or exchange is None:
         raise RuntimeError("setup_queue: queue/exchange name required!")
 
     routing_key = name if key is None else key
-    queue = kombu.Queue(name=name, exchange=exchange, routing_key=routing_key)
+    queue = kombu.Queue(name=name, exchange=exchange, routing_key=routing_key, durable=durable)
     queue.maybe_bind(channel)
 
     # VIP: ensure that queue is declared! If it isn't, we can send message to queue but they die, silently :-(
