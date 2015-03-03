@@ -3,7 +3,7 @@
 dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd $dir
 
-virtualenv -p python2 ~/venvs/register-publisher
+virtualenv -p python3 ~/venvs/register-publisher
 source ~/venvs/register-publisher/bin/activate
 
 pip install -r requirements.txt
@@ -30,7 +30,7 @@ esac
 echo "Adding register-publisherto supervisord..."
 cat > /etc/supervisord.d/register-publisher.ini << EOF
 [program:registerpublisher]
-command=python run.py
+command=$HOME/venvs/register-publisher/bin/python run.py
 directory=$dir
 autostart=true
 autorestart=true
