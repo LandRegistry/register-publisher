@@ -6,7 +6,7 @@ This service will forward messages from the "System of Record" queue to the "fee
 * Using the Advanced Message Queuing Protocol (AMQP).
 * Messages are received via the default 'direct' exchange.
 * They are forwarded to the default 'fanout' exchange - which permits multiple clients.
-* A 'direct' type of output exchange should also be possible but may have to be explicitly set. 
+* A 'direct' type of output exchange should also be possible but may have to be explicitly set.
 
 
 ##dependencies:
@@ -28,13 +28,11 @@ Also, for 'vagrant' operation, ensure that "VBoxHeadless.exe" is added to the fi
 ```
 vagrant up
 vagrant ssh
-cd /vagrant
-./run.sh -d
 ```
-
-To the run this in production use the following command
+Supervisord has been configured to launch this application on start up, but if you want to stop Supervisord running it and run it yourself then:
 
 ```
+sudo supervisorctl stop register-publisher
 ./run.sh
 ```
 
@@ -44,7 +42,7 @@ In virtual machine ('vagrant'):
 * in that case the RabbitMQ 'guest' account may not be sufficient.
 
 if executing tests directly on host:
-* 'localhost' will required
+* 'localhost' will be required
 * default RabbitMQ 'guest' account will suffice.
 
 ```
