@@ -8,6 +8,8 @@ This service will forward messages from the "System of Record" queue to the "fee
 * They are forwarded to the default 'fanout' exchange - which permits multiple clients.
 * A 'direct' type of output exchange should also be possible but may have to be explicitly set. 
 
+See the [wiki](https://github.com/LandRegistry/register-publisher/wiki) for design notes, etc.
+
 
 ##dependencies:
 
