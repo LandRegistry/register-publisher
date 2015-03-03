@@ -92,6 +92,8 @@ def setup_producer(connection=None, exchange=outgoing_exchange, serializer='json
     logger.info("channel: {}".format(channel))
     logger.info("exchange: {}".format(exchange))
 
+    queue = setup_queue(channel, name=OUTGOING_QUEUE, exchange=exchange)
+
     producer = kombu.Producer(channel, exchange=exchange, serializer=serializer)
 
     return producer
