@@ -21,3 +21,13 @@ class DevelopmentConfig(Config):
 class TestConfig(Config):
     DEBUG = False
     LOG_THRESHOLD_LEVEL = os.getenv('LOG_THRESHOLD_LEVEL', 'INFO')
+
+class PreviewConfig(Config):
+    DEBUG = True
+    LOG_THRESHOLD_LEVEL = os.getenv('LOG_THRESHOLD_LEVEL', 'INFO')
+
+class PreProductionConfig(Config):
+    LOG_THRESHOLD_LEVEL = os.getenv('LOG_THRESHOLD_LEVEL', 'INFO')
+
+class ProductionConfig(Config):
+    LOG_THRESHOLD_LEVEL = os.getenv('LOG_THRESHOLD_LEVEL', 'INFO')

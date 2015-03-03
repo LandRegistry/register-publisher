@@ -20,8 +20,6 @@ puppet module install puppetlabs-rabbitmq
 
 puppet apply /vagrant/manifests/rabbit.pp
 
-
-
 cd /vagrant
 
 source install.sh
