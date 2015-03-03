@@ -77,7 +77,7 @@ def setup_connection(exchange=None):
     with stopit.ThreadingTimeout(10) as to_ctx_mgr:
         assert to_ctx_mgr.state == to_ctx_mgr.EXECUTING
 
-        connection = kombu.Connection(hostname=RP_HOSTNAME)
+        connection = kombu.Connection(hostname=RP_HOSTNAME, transport_options={'confirm_publish': True})
         app.logger.info(RP_HOSTNAME)
         connection.connect()
 
