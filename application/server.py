@@ -103,9 +103,6 @@ def setup_producer(connection=None, exchange=outgoing_exchange, serializer='json
     logger.info("channel: {}".format(channel))
     logger.info("exchange: {}".format(exchange))
 
-    # Make sure that outgoing queue exists!
-    setup_queue(channel, name=OUTGOING_QUEUE, exchange=exchange)
-
     producer = kombu.Producer(channel, exchange=exchange, serializer=serializer)
 
     return producer
@@ -122,7 +119,6 @@ def setup_consumer(connection=None, exchange=incoming_exchange, queue_name=INCOM
 
     # A consumer needs a queue, so create one (if necessary).
     queue = setup_queue(channel, name=queue_name, exchange=exchange)
-    logger.info("queue: {}".format(queue.name))
 
     consumer = kombu.Consumer(channel, queues=queue, callbacks=[callback], accept=['json'])
 
@@ -158,6 +154,9 @@ def run():
 
     # Producer for outgoing (default) exchange.
     producer = setup_producer()
+
+    # Make sure that outgoing queue exists!
+    setup_queue(producer.channel, name=OUTGOING_QUEUE, exchange=outgoing_exchange)
 
     # This is used to consume messages from the "System of Record", then forward them to the outside world.
     # @TO DO: This may unpack incoming messages, then pack them again when forwarding; consider 'on_message()' instead.
