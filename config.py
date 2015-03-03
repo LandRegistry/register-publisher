@@ -13,6 +13,12 @@ class DevelopmentConfig(Config):
     DEBUG = True
     LOG_LEVEL = os.getenv('LOG_LEVEL', 'DEBUG')
 
-class TestConfig(Config):
+class PreviewConfig(Config):
     DEBUG = True
+    LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
+
+class PreProductionConfig(Config):
+    LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
+
+class ProductionConfig(Config):
     LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
