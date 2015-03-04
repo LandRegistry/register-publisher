@@ -61,9 +61,6 @@ class TestRegisterPublisher(unittest.TestCase):
             # Ensure that message broker is alive
             self.assertEqual(connection.connected, True)
 
-        # Message to be sent.
-        self.message = make_message()
-
         # Corresponding 'payload' of message received.
         self.payload = None
 
@@ -82,6 +79,11 @@ class TestRegisterPublisher(unittest.TestCase):
 
     def test_incoming_queue(self):
         """ Basic check of 'incoming' message via default direct exchange """
+
+        server.echo("test_incoming_queue")
+
+        # Message to be sent.
+        self.message = make_message()
 
         exchange = server.incoming_exchange
         queue_name = server.INCOMING_QUEUE
@@ -104,6 +106,11 @@ class TestRegisterPublisher(unittest.TestCase):
     def test_end_to_end(self):
         """ Send message from dummy "System Of Record", then consume and check it. """
 
+        server.echo("test_end_to_end")
+
+        # Message to be sent.
+        self.message = make_message()
+
         # Execute 'run()' as a separate process.
         logger.info("Starting 'server.run()' with timeout")
         server_run = Process(target=server.run)
@@ -114,7 +121,7 @@ class TestRegisterPublisher(unittest.TestCase):
         queue_name=server.INCOMING_QUEUE
         with server.setup_producer(exchange=exchange, queue_name=queue_name) as producer:
             producer.publish(body=self.message, routing_key=server.INCOMING_QUEUE)
-            logger.info(self.message)
+            logger.debug(self.message)
 
         # Wait long enough for message to be picked up.
         # N.B.: 1 second may be insufficient, for a full coverage check during testing.
@@ -129,6 +136,39 @@ class TestRegisterPublisher(unittest.TestCase):
         self.consume(exchange=exchange, queue_name=queue_name)
 
         self.assertEqual(self.message, self.payload)
+
+    def test_multiple_end_to_end(self):
+        """ Check many messages. """
+
+        server.echo("test_multiple_end_to_end")
+
+        server_run = Process(target=server.run)
+        server_run.start()
+
+        # Send a message to 'incoming' exchange - i.e. as if from SoR.
+        exchange=server.incoming_exchange
+        queue_name=server.INCOMING_QUEUE
+        with server.setup_producer(exchange=exchange, queue_name=queue_name) as producer:
+            for n in range(100):
+
+                # Message to be sent.
+                self.message = make_message()
+
+                producer.publish(body=self.message, routing_key=server.INCOMING_QUEUE)
+                logger.debug(self.message)
+
+                # Consume message from outgoing exchange, via callback.
+                exchange=server.outgoing_exchange
+                queue_name=server.OUTGOING_QUEUE
+                self.consume(exchange=exchange, queue_name=queue_name)
+
+                self.assertEqual(self.message, self.payload)
+
+        # Wait long enough for all messages to be processed.
+        server_run.join(timeout=10)
+        logger.info("'server.run()' completed")
+        server_run.terminate()
+        logger.info("'server.run()' terminated")
 
 
 if __name__ == '__main__':

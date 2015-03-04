@@ -69,6 +69,10 @@ def setup_logger(name=__name__):
 
 logger = setup_logger('Register-Publisher')
 
+log_threshold_level_name = logging.getLevelName(logger.getEffectiveLevel())
+echo("LOG_THRESHOLD_LEVEL = {}".format(log_threshold_level_name))
+
+
 # RabbitMQ connection/channel; default user/password.
 def setup_connection(exchange=None):
     """ Attempt connection, with timeout. """
@@ -154,9 +158,6 @@ def setup_queue(channel, name=None, exchange=incoming_exchange, key=None, durabl
 
 
 def run():
-
-    log_threshold_level_name = logging.getLevelName(logger.getEffectiveLevel())
-    echo("LOG_THRESHOLD_LEVEL = {}".format(log_threshold_level_name))
 
     # Producer for outgoing (default) exchange.
     producer = setup_producer()
