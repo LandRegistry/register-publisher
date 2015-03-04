@@ -4,6 +4,7 @@ import os
 
 
 class Config(object):
+    # Flask DEBUG setting - not used.
     DEBUG = False
 
     # Logging parameters.
@@ -15,15 +16,12 @@ class Config(object):
     OUTGOING_QUEUE = os.getenv('OUTGOING_QUEUE', 'OUTGOING_QUEUE')                  # Default outgoing queue name
 
 class DevelopmentConfig(Config):
-    DEBUG = True
     LOG_THRESHOLD_LEVEL = os.getenv('LOG_THRESHOLD_LEVEL', 'DEBUG')
 
 class TestConfig(Config):
-    DEBUG = False
     LOG_THRESHOLD_LEVEL = os.getenv('LOG_THRESHOLD_LEVEL', 'INFO')
 
 class PreviewConfig(Config):
-    DEBUG = True
     LOG_THRESHOLD_LEVEL = os.getenv('LOG_THRESHOLD_LEVEL', 'INFO')
 
 class PreProductionConfig(Config):

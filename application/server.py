@@ -73,11 +73,12 @@ logger = setup_logger('Register-Publisher')
 def setup_connection(exchange=None):
     """ Attempt connection, with timeout. """
 
-    # Attempt connection in a separate thread, as (implied) 'connect' call hangs if permissions not set etc.
+    # Attempt connection in a separate thread, as (implied) 'connect' call may hang if permissions not set etc.
     with stopit.ThreadingTimeout(10) as to_ctx_mgr:
         assert to_ctx_mgr.state == to_ctx_mgr.EXECUTING
 
-        connection = kombu.Connection(hostname=RP_HOSTNAME, transport_options={'confirm_publish': True})
+        # connection = kombu.Connection(hostname=RP_HOSTNAME, transport_options={'confirm_publish': True})
+        connection = kombu.Connection(hostname=RP_HOSTNAME)
         app.logger.info(RP_HOSTNAME)
         connection.connect()
 
@@ -135,7 +136,8 @@ def setup_queue(channel, name=None, exchange=incoming_exchange, key=None, durabl
         raise RuntimeError("setup_queue: queue/exchange name required!")
 
     routing_key = name if key is None else key
-    queue = kombu.Queue(name=name, exchange=exchange, routing_key=routing_key, durable=durable)
+    # queue = kombu.Queue(name=name, exchange=exchange, routing_key=routing_key, durable=durable)
+    queue = kombu.Queue(name=name, exchange=exchange, routing_key=routing_key)
     queue.maybe_bind(channel)
 
     # VIP: ensure that queue is declared! If it isn't, we can send message to queue but they die, silently :-(
@@ -146,14 +148,15 @@ def setup_queue(channel, name=None, exchange=incoming_exchange, key=None, durabl
     except AccessRefused:
         pass
 
-    logger.info("queue name, exchange, key: {}, {}, {}".format(name, exchange, routing_key))
+    logger.info("queue name, exchange, key: {}, {}, {}".format(queue.name, exchange, routing_key))
 
     return queue
 
 
 def run():
 
-    echo("LOG_THRESHOLD_LEVEL = {}".format(logger.getEffectiveLevel()))
+    log_threshold_level_name = logging.getLevelName(logger.getEffectiveLevel())
+    echo("LOG_THRESHOLD_LEVEL = {}".format(log_threshold_level_name))
 
     # Producer for outgoing (default) exchange.
     producer = setup_producer()

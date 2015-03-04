@@ -14,10 +14,6 @@ Pretend to be "System Of Record" publisher.
 
 # Set up root logger
 logger = server.logger
-# logger = server.setup_logger()
-# logger.debug("TEST DEBUG")
-# logger.info("TEST INFO")
-# logger.error("TEST ERROR")
 
 # Basic test data.
 def make_message():
@@ -37,6 +33,26 @@ class TestRegisterPublisher(unittest.TestCase):
 
         self.payload = message.payload
 
+    def consume(self, exchange=server.incoming_exchange, queue_name=server.INCOMING_QUEUE):
+        """ Get message via callback mechanism """
+
+        callback = self.handle_message
+
+        with server.setup_consumer(exchange=exchange, queue_name=queue_name, callback=callback) as consumer:
+
+            # 'consume' may be a misnomer here - it just initiates the consumption process, I believe.
+            consumer.consume()
+
+            # Execute 'drain_events()' loop in a time-out thread, in case it gets stuck.
+            logger.info("'drain_events()' with timeout")
+            try:
+                consumer.connection.drain_events(timeout=5)
+            except Exception as e:
+                logger.error(e)
+            finally:
+                consumer.cancel()
+                consumer.close()
+
     def setUp(self):
         """ Establish connection and other resources; prepare """
 
@@ -44,13 +60,6 @@ class TestRegisterPublisher(unittest.TestCase):
 
             # Ensure that message broker is alive
             self.assertEqual(connection.connected, True)
-
-            # We also need relevant queues established before publishing to exchange!
-            queue = server.setup_queue(connection, name=server.INCOMING_QUEUE, exchange=server.incoming_exchange)
-            queue.purge()
-
-            queue = server.setup_queue(connection, name=server.OUTGOING_QUEUE, exchange=server.outgoing_exchange)
-            queue.purge()
 
         # Message to be sent.
         self.message = make_message()
@@ -77,26 +86,19 @@ class TestRegisterPublisher(unittest.TestCase):
         exchange = server.incoming_exchange
         queue_name = server.INCOMING_QUEUE
 
+        # Check server with explicit connection.
         with server.setup_connection() as connection:
-            producer = server.setup_producer(connection, exchange=exchange)
+            producer = server.setup_producer(connection, exchange=exchange, queue_name=queue_name)
             producer.publish(body=self.message, routing_key=queue_name)
             logger.info("Put message, exchange: {}, {}".format(self.message, exchange))
 
-       # Wait a bit - one second should be long enough.
-        time.sleep(1)
+            producer.close()
 
-        with server.setup_connection() as connection:
-            consumer = server.setup_consumer(connection, exchange=exchange, queue_name=queue_name)
-            queue = consumer.queues[0]
-            message = queue.get()
-            logger.info("Got message, queue: {}, {}".format(message.body, queue.name))
+        self.consume()
 
-            queue.delete()
+        connection.close()
 
-            if message:
-                self.handle_message(message.body, message)
-
-            self.assertEqual(self.message, self.payload)
+        self.assertEqual(self.message, self.payload)
 
     # N.B.: this test reverses the default 'producer' and 'consumer' targets.
     def test_end_to_end(self):
@@ -109,7 +111,8 @@ class TestRegisterPublisher(unittest.TestCase):
 
         # Send a message to 'incoming' exchange - i.e. as if from SoR.
         exchange=server.incoming_exchange
-        with server.setup_producer(exchange=exchange) as producer:
+        queue_name=server.INCOMING_QUEUE
+        with server.setup_producer(exchange=exchange, queue_name=queue_name) as producer:
             producer.publish(body=self.message, routing_key=server.INCOMING_QUEUE)
             logger.info(self.message)
 
@@ -120,26 +123,10 @@ class TestRegisterPublisher(unittest.TestCase):
         server_run.terminate()
         logger.info("'server.run()' terminated")
 
-        # Consume (poll) message from outgoing exchange.
+        # Consume message from outgoing exchange.
         exchange=server.outgoing_exchange
         queue_name=server.OUTGOING_QUEUE
-        callback = self.handle_message
-
-        with server.setup_consumer(exchange=exchange, queue_name=queue_name, callback=callback) as consumer:
-
-            # 'consume' may be a misnomer here - it just initiates the consumption process, I believe.
-            consumer.consume()
-
-            # Execute 'drain_events()' loop in a time-out thread, in case it gets stuck.
-            logger.info("'drain_events()' with timeout")
-            try:
-                consumer.connection.drain_events(timeout=5)
-            except Exception as e:
-                logger.error(e)
-            finally:
-                consumer.cancel()
-                consumer.close()
-
+        self.consume(exchange=exchange, queue_name=queue_name)
 
         self.assertEqual(self.message, self.payload)
 
