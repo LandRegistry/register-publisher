@@ -61,8 +61,8 @@ class TestRegisterPublisher(unittest.TestCase):
             # Ensure that message broker is alive
             self.assertEqual(connection.connected, True)
 
-        # Corresponding 'payload' of message received.
-        self.payload = None
+        self.message = None             # Message to be sent.
+        self.payload = None             # Corresponding 'payload' of message received.
 
     def tearDown(self):
 
@@ -82,23 +82,18 @@ class TestRegisterPublisher(unittest.TestCase):
 
         server.echo("test_incoming_queue")
 
-        # Message to be sent.
         self.message = make_message()
 
         exchange = server.incoming_exchange
         queue_name = server.INCOMING_QUEUE
 
-        # Check server with explicit connection.
-        with server.setup_connection() as connection:
-            producer = server.setup_producer(connection, exchange=exchange, queue_name=queue_name)
-            producer.publish(body=self.message, routing_key=queue_name)
-            logger.info("Put message, exchange: {}, {}".format(self.message, exchange))
+        producer = server.setup_producer(exchange=exchange, queue_name=queue_name)
+        producer.publish(body=self.message, routing_key=queue_name)
+        logger.info("Put message, exchange: {}, {}".format(self.message, exchange))
 
-            producer.close()
+        producer.close()
 
         self.consume()
-
-        connection.close()
 
         self.assertEqual(self.message, self.payload)
 
@@ -108,7 +103,6 @@ class TestRegisterPublisher(unittest.TestCase):
 
         server.echo("test_end_to_end")
 
-        # Message to be sent.
         self.message = make_message()
 
         # Execute 'run()' as a separate process.
@@ -137,6 +131,7 @@ class TestRegisterPublisher(unittest.TestCase):
 
         self.assertEqual(self.message, self.payload)
 
+    @unittest.skip("...")
     def test_multiple_end_to_end(self):
         """ Check many messages. """
 

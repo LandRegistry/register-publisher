@@ -32,7 +32,11 @@ app.config.from_object(os.environ.get('SETTINGS'))
 INCOMING_QUEUE = app.config['INCOMING_QUEUE']
 OUTGOING_QUEUE = app.config['OUTGOING_QUEUE']
 RP_HOSTNAME = app.config['RP_HOSTNAME']
-incoming_exchange = kombu.Exchange(type="direct", durable=True)
+
+# Relevant Exchange default values:
+#   delivery_mode: '2' (persistent messages)
+#   durable: True (exchange remains 'active' on server re-start)
+incoming_exchange = kombu.Exchange(type="direct")
 outgoing_exchange = kombu.Exchange(type="fanout")
 
 # Logger-independent output to 'stderr'.
@@ -74,15 +78,19 @@ echo("LOG_THRESHOLD_LEVEL = {}".format(log_threshold_level_name))
 
 
 # RabbitMQ connection/channel; default user/password.
-def setup_connection(exchange=None):
+def setup_connection(exchange=None, confirm_publish=False):
     """ Attempt connection, with timeout. """
+
+    # Run-time checks.
+    assert exchange is not None
+    assert confirm_publish == (True or False)
 
     # Attempt connection in a separate thread, as (implied) 'connect' call may hang if permissions not set etc.
     with stopit.ThreadingTimeout(10) as to_ctx_mgr:
         assert to_ctx_mgr.state == to_ctx_mgr.EXECUTING
 
-        # connection = kombu.Connection(hostname=RP_HOSTNAME, transport_options={'confirm_publish': True})
-        connection = kombu.Connection(hostname=RP_HOSTNAME)
+        # N.B.: 'confirm_publish' refers to the "Confirmation Model", with the broker as client to a publisher.
+        connection = kombu.Connection(hostname=RP_HOSTNAME, transport_options={'confirm_publish': confirm_publish})
         app.logger.info(RP_HOSTNAME)
         connection.connect()
 
@@ -98,14 +106,16 @@ def setup_connection(exchange=None):
         exchange.maybe_bind(connection)
         maybe_declare(exchange, connection)
 
+    logger.info("connection: {}".format(connection))
+
     return connection
 
 
 # Producer, for 'outgoing' exchange by default.
-def setup_producer(connection=None, exchange=outgoing_exchange, queue_name=OUTGOING_QUEUE, serializer='json'):
+def setup_producer(exchange=outgoing_exchange, queue_name=OUTGOING_QUEUE, serializer='json'):
 
-    channel = setup_connection(exchange) if connection is None else connection
-    logger.info("channel: {}".format(channel))
+    channel = setup_connection(exchange=exchange)
+    logger.info("queue_name: {}".format(queue_name))
     logger.info("exchange: {}".format(exchange))
 
     # Make sure that outgoing queue exists!
@@ -117,13 +127,13 @@ def setup_producer(connection=None, exchange=outgoing_exchange, queue_name=OUTGO
 
 
 # Consumer, for 'incoming' queue by default.
-def setup_consumer(connection=None, exchange=incoming_exchange, queue_name=INCOMING_QUEUE, callback=None):
+def setup_consumer(exchange=incoming_exchange, queue_name=INCOMING_QUEUE, callback=None, confirm_publish=True):
     """ Create consumer with single queue and callback """
 
-    channel = setup_connection(exchange) if connection is None else connection
-    logger.info("channel: {}".format(channel))
+    channel = setup_connection(exchange=exchange, confirm_publish=confirm_publish)
     logger.info("exchange: {}".format(exchange))
-    logger.info("queue: {}".format(queue_name))
+    logger.info("queue_name: {}".format(queue_name))
+    logger.info("confirm_publish: {}".format(confirm_publish))
 
     # A consumer needs a queue, so create one (if necessary).
     queue = setup_queue(channel, name=queue_name, exchange=exchange)
@@ -140,8 +150,7 @@ def setup_queue(channel, name=None, exchange=incoming_exchange, key=None, durabl
         raise RuntimeError("setup_queue: queue/exchange name required!")
 
     routing_key = name if key is None else key
-    # queue = kombu.Queue(name=name, exchange=exchange, routing_key=routing_key, durable=durable)
-    queue = kombu.Queue(name=name, exchange=exchange, routing_key=routing_key)
+    queue = kombu.Queue(name=name, exchange=exchange, routing_key=routing_key, durable=durable)
     queue.maybe_bind(channel)
 
     # VIP: ensure that queue is declared! If it isn't, we can send message to queue but they die, silently :-(

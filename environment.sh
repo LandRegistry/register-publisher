@@ -5,6 +5,7 @@
 export SETTINGS="config.DevelopmentConfig"
 export RP_HOSTNAME="amqp://guest:guest@localhost:5672//"
 export INCOMING_QUEUE="system_of_record"
+export OUTGOING_QUEUE="feeder"
 
 # The following are not used, for now.
 export RP_INCOMING_EXCHG_NAME=""
