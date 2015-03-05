@@ -14,7 +14,8 @@ See the [wiki](https://github.com/LandRegistry/register-publisher/wiki) for desi
 ##dependencies:
 
 - See 'requirements.txt'; in particular, additions for 'kombu' and 'stopit'.
-- An AMQP broker is required, typically "RabbitMQ".
+- "RabbitMQ", an AMQP broker.
+-  A suitable non-guest account for the above, when using more than one machine (even a virtual one).
 
 ##environment
 
