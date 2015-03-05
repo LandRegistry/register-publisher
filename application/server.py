@@ -82,8 +82,7 @@ def setup_connection(exchange=None, confirm_publish=False):
     """ Attempt connection, with timeout. """
 
     # Run-time checks.
-    assert exchange is not None
-    assert confirm_publish == (True or False)
+    assert type(confirm_publish) is bool
 
     # Attempt connection in a separate thread, as (implied) 'connect' call may hang if permissions not set etc.
     with stopit.ThreadingTimeout(10) as to_ctx_mgr:
