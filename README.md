@@ -21,13 +21,13 @@ See the [wiki](https://github.com/LandRegistry/register-publisher/wiki) for desi
 This application refers to the following environment variables:
 
 
-|Name                | Default Value                              |Mandatory?|
+|Name                | Default 'Config' Value                     |Mandatory?|
 | ------------- |-------------| -----|
-|SETTINGS            |"config.ProductionConfig"                   |YES|
+|SETTINGS            |"config.DevelopmentConfig"                  |YES|
 |LOG_THRESHOLD_LEVEL |ERROR                                       |NO|
 |RP_HOSTNAME         |"amqp://guest:guest@localhost:5672//"       |NO|
-|INCOMING_QUEUE      |"system_of_record"                          |NO|
-|OUTGOING_QUEUE      |"feeder"                                    |NO|
+|INCOMING_QUEUE      |"INCOMING_QUEUE"                            |NO|
+|OUTGOING_QUEUE      |"OUTGOING_QUEUE"                            |NO|
 
 
 N.B.:  
