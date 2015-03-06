@@ -22,6 +22,8 @@ Register-Publisher: forwards messages from the System of Record to the outside w
 See http://www.rabbitmq.com/blog/2010/10/19/exchange-to-exchange-bindings for an alternative arrangement, which may be
 unique to RabbitMQ. This might avoid the unpack/pack issue of 'process_message()' but it does not permit logging etc.
 More importantly perhaps, this package acts as a proxy publisher for the System of Record - i.e. security/isolation.
+
+
 """
 
 # Flask is invoked here purely to get the configuration values in a consistent manner!
@@ -78,25 +80,26 @@ echo("LOG_THRESHOLD_LEVEL = {}".format(log_threshold_level_name))
 
 
 # RabbitMQ connection/channel; default user/password.
-def setup_connection(exchange=None, confirm_publish=False):
-    """ Attempt connection, with timeout. """
+def setup_connection(exchange=None):
+    """ Attempt connection, with timeout.
 
-    # Run-time checks.
-    assert type(confirm_publish) is bool
+    """
+
+    logger.info("exchange: {}".format(exchange))
 
     # Attempt connection in a separate thread, as (implied) 'connect' call may hang if permissions not set etc.
     with stopit.ThreadingTimeout(10) as to_ctx_mgr:
         assert to_ctx_mgr.state == to_ctx_mgr.EXECUTING
 
         # N.B.: 'confirm_publish' refers to the "Confirmation Model", with the broker as client to a publisher.
-        connection = kombu.Connection(hostname=RP_HOSTNAME, transport_options={'confirm_publish': confirm_publish})
+        ## connection = kombu.Connection(hostname=RP_HOSTNAME, transport_options={'confirm_publish': confirm_publish})
+        connection = kombu.Connection(hostname=RP_HOSTNAME)
         app.logger.info(RP_HOSTNAME)
         connection.connect()
 
     if to_ctx_mgr.state == to_ctx_mgr.TIMED_OUT:
         err_msg = "Connection unavailable: {}".format(RP_HOSTNAME)
         raise RuntimeError(err_msg)
-
 
     logger.info("URI: {}".format(connection.as_uri()))
 
@@ -105,39 +108,83 @@ def setup_connection(exchange=None, confirm_publish=False):
         exchange.maybe_bind(connection)
         maybe_declare(exchange, connection)
 
-    logger.info("connection: {}".format(connection))
-
-    return connection
+    return connection.channel()
 
 
-# Producer, for 'outgoing' exchange by default.
-def setup_producer(exchange=outgoing_exchange, queue_name=OUTGOING_QUEUE, serializer='json'):
+def Producer(channel, exchange=None, confirm=True):
+    """ Producer 'pseudo-class', using "Confirmation Model (aka Publisher Acknowledgements)"
+
+    See: https://www.rabbitmq.com/confirms.html
+
+    From http://amqp.readthedocs.org/en/latest/changelog.html:
+    * There is now a new Connection confirm_publish that will force any basic_publish call to wait for confirmation.
+    * Enabling publisher confirms like this degrades performance considerably, so use of 'confirm_select' is preferred.
+
+    From https://pypi.python.org/pypi/amqp:
+    * Channel.confirm_select() enables publisher confirms.
+    * Channel.events['basic_ack'].append(my_callback) adds a callback to be called when a message is confirmed.
+    * This callback is then called with the signature (delivery_tag, multiple)
+
+    Overrides (in effect) the 'publish' method of kombu.Producer class.
+    """
+
+    # Run-time checks.
+    assert type(confirm) is bool
+    logger.debug("channel: {}".format(channel))
+    logger.debug("exchange: {}".format(exchange))
+    logger.debug("confirm: {}".format(confirm))
+
+    unacknowledged_messages = set()
+    producer = kombu.Producer(channel, exchange=exchange)
+
+    # Use "Confirmation Model", if specified.
+    if confirm:
+
+        def confirmation_callback(delivery_tag, multiple):
+            """ Handle "Publisher Acknowledgement" from broker.
+
+            Remove corresponding message id(s). from "Unacknowledged" list/set.
+            Note that messages are persistent by default - i.e. they are saved by the broker, pending acknowledgement.
+            """
+
+            if delivery_tag in unacknowledged_messages:
+                unacknowledged_messages.remove(delivery_tag)
+
+        channel.confirm_select()
+        channel.events['basic_ack'].append(confirmation_callback)
+
+    def publish(message=None, routing_key=None):
+        """Publish message after noting id. in "Unacknowledged" set """
+
+        unacknowledged_messages.add(message.delivery_info)
+        producer.publish(message.body, routing_key)
+
+
+# Get Producer, for 'outgoing' exchange and JSON "serializer" by default.
+def setup_producer(exchange=outgoing_exchange, queue_name=OUTGOING_QUEUE, confirm=True):
 
     channel = setup_connection(exchange=exchange)
     logger.info("queue_name: {}".format(queue_name))
-    logger.info("exchange: {}".format(exchange))
 
     # Make sure that outgoing queue exists!
     setup_queue(channel, name=queue_name, exchange=exchange)
 
-    producer = kombu.Producer(channel, exchange=exchange, serializer=serializer)
+    producer = Producer(channel, exchange=exchange, confirm=confirm)
 
     return producer
 
 
 # Consumer, for 'incoming' queue by default.
-def setup_consumer(exchange=incoming_exchange, queue_name=INCOMING_QUEUE, callback=None, confirm_publish=True):
+def setup_consumer(exchange=incoming_exchange, queue_name=INCOMING_QUEUE, on_message=None):
     """ Create consumer with single queue and callback """
 
-    channel = setup_connection(exchange=exchange, confirm_publish=confirm_publish)
-    logger.info("exchange: {}".format(exchange))
+    channel = setup_connection(exchange=exchange)
     logger.info("queue_name: {}".format(queue_name))
-    logger.info("confirm_publish: {}".format(confirm_publish))
 
     # A consumer needs a queue, so create one (if necessary).
     queue = setup_queue(channel, name=queue_name, exchange=exchange)
 
-    consumer = kombu.Consumer(channel, queues=queue, callbacks=[callback], accept=['json'])
+    consumer = kombu.Consumer(channel, queues=queue, on_message=on_message, accept=['json'])
 
     return consumer
 
@@ -173,19 +220,20 @@ def run():
     # This is used to consume messages from the "System of Record", then forward them to the outside world.
     # @TO DO: This may unpack incoming messages, then pack them again when forwarding; consider 'on_message()' instead.
     # ['body' is decoded content, 'message' is the packet as a whole].
-    def process_message(body, message):
+
+    def process_message(message, exc):
         ''' Forward messages from the 'System of Record' to the outside world '''
 
         logger.info("RECEIVED MSG - delivery_info: {}".format(message.delivery_info))
 
         # Forward message to outgoing exchange.
-        producer.publish(body=body, routing_key=OUTGOING_QUEUE)
+        producer.publish(message=message, routing_key=OUTGOING_QUEUE)
 
-        # Acknowledge message only after publish(); if that fails. message is still in queue.
+        # Acknowledge message only after publish(); if that fails, message is still in queue.
         message.ack()
 
     # Create consumer with default exchange/queue.
-    consumer = setup_consumer(callback=process_message)
+    consumer = setup_consumer(on_message=process_message)
     consumer.consume()
 
     # Loop "forever", as a service.
