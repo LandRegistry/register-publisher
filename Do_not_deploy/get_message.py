@@ -1,3 +1,0 @@
-from message_functions import get_last_incoming_queue_message
-
-get_last_incoming_queue_message(True)
