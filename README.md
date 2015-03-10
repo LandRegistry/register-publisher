@@ -11,7 +11,7 @@ This service will forward messages from the "System of Record" queue to the "fee
 See the [wiki](https://github.com/LandRegistry/register-publisher/wiki) for design notes, etc.
 
 
-##dependencies:
+##Dependencies:
 
 - See 'requirements.txt'; in particular, additions for 'kombu' and 'stopit'.
 - "RabbitMQ", an AMQP broker.
@@ -87,4 +87,10 @@ Start the server
 
 ```
 service rabbitmq-server start
+```
+
+Add a test message
+
+```
+rabbitmqadmin publish exchange=amq.default routing_key=system_of_record payload="hello, world"
 ```
