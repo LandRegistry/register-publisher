@@ -129,7 +129,6 @@ class TestRegisterPublisher(unittest.TestCase):
 
         self.assertEqual(self.message, self.payload)
 
-    @unittest.skip("...")
     def test_multiple_end_to_end(self):
         """ Check many messages. """
 

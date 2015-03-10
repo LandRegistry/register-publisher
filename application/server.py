@@ -80,10 +80,10 @@ echo("LOG_THRESHOLD_LEVEL = {}".format(log_threshold_level_name))
 
 
 # RabbitMQ connection; default user/password.
-def setup_connection(exchange=None, confirm_publish=True):
+def setup_connection(confirm_publish=True):
     """ Attempt connection, with timeout.
 
-    'confirm' refers to the "Confirmation Model", with the broker as client to a publisher.
+    'confirm_publish' refers to the "Confirmation Model", with the broker as client to a publisher.
 
     This can be for asynchronous operation, in which case channel.confirm_select() is called,
     or for synchronous operation, which employs channel.basic_publish() in a blocking way; note
@@ -96,7 +96,10 @@ def setup_connection(exchange=None, confirm_publish=True):
 
     """
 
-    logger.info("exchange: {}".format(exchange))
+    # Run-time checks.
+    assert type(confirm_publish) is bool
+
+    logger.debug("confirm_publish: {}".format(confirm_publish))
 
     # Attempt connection in a separate thread, as (implied) 'connect' call may hang if permissions not set etc.
     with stopit.ThreadingTimeout(10) as to_ctx_mgr:
@@ -112,18 +115,21 @@ def setup_connection(exchange=None, confirm_publish=True):
 
     logger.info("URI: {}".format(connection.as_uri()))
 
-    # Bind/Declare exchange on broker if necessary.
-    if exchange is not None:
-        exchange.maybe_bind(connection)
-        maybe_declare(exchange, connection)
-
     return connection
 
 
 # RabbitMQ channel.
 def setup_channel(exchange=None, connection=None):
+    """ Get a channel and bind exchange to it. """
 
-    channel = setup_connection(exchange).channel() if connection is None else connection.channel
+    assert exchange is not None
+    logger.info("exchange: {}".format(exchange))
+
+    channel = setup_connection().channel() if connection is None else connection.channel
+
+    # Bind/Declare exchange on broker if necessary.
+    exchange.maybe_bind(channel)
+    maybe_declare(exchange, channel)
 
     return channel
 
@@ -175,7 +181,7 @@ def setup_queue(channel, name=None, exchange=incoming_exchange, key=None, durabl
     except AccessRefused:
         pass
 
-    logger.info("queue name, exchange, key: {}, {}, {}".format(queue.name, exchange, routing_key))
+    logger.info("queue name, exchange, routing_key: {}, {}, {}".format(queue.name, exchange, routing_key))
 
     return queue
 
