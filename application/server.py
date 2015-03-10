@@ -79,7 +79,7 @@ log_threshold_level_name = logging.getLevelName(logger.getEffectiveLevel())
 echo("LOG_THRESHOLD_LEVEL = {}".format(log_threshold_level_name))
 
 
-# RabbitMQ connection/channel; default user/password.
+# RabbitMQ connection; default user/password.
 def setup_connection(exchange=None):
     """ Attempt connection, with timeout.
 
@@ -108,11 +108,19 @@ def setup_connection(exchange=None):
         exchange.maybe_bind(connection)
         maybe_declare(exchange, connection)
 
-    return connection.channel()
+    return connection
 
 
-def Producer(channel, exchange=None, confirm=True):
-    """ Producer 'pseudo-class', using "Confirmation Model (aka Publisher Acknowledgements)"
+# RabbitMQ channel.
+def setup_channel(exchange=None, connection=None):
+
+    channel = setup_connection(exchange).channel() if connection is None else connection.channel
+
+    return channel
+
+
+class Producer(kombu.Producer):
+    """ Producer sub-class, using ASYNCHRONOUS "Confirmation Model" (aka "Publisher Acknowledgements").
 
     See: https://www.rabbitmq.com/confirms.html
 
@@ -125,50 +133,89 @@ def Producer(channel, exchange=None, confirm=True):
     * Channel.events['basic_ack'].append(my_callback) adds a callback to be called when a message is confirmed.
     * This callback is then called with the signature (delivery_tag, multiple)
 
-    Overrides (in effect) the 'publish' method of kombu.Producer class.
+    Overrides the 'publish' method of kombu.Producer class.
     """
 
-    # Run-time checks.
-    assert type(confirm) is bool
-    logger.debug("channel: {}".format(channel))
-    logger.debug("exchange: {}".format(exchange))
-    logger.debug("confirm: {}".format(confirm))
 
-    unacknowledged_messages = set()
-    producer = kombu.Producer(channel, exchange=exchange)
+    def __init__(self, channel, exchange=None, confirm=True, **kwargs):
 
-    # Use "Confirmation Model", if specified.
-    if confirm:
+        # Run-time checks.
+        assert channel is not None
+        assert exchange is not None
+        assert type(confirm) is bool
 
-        def confirmation_callback(delivery_tag, multiple):
-            """ Handle "Publisher Acknowledgement" from broker.
+        logger.debug("channel: {}".format(channel))
+        logger.debug("exchange: {}".format(exchange))
+        logger.debug("confirm: {}".format(confirm))
 
-            Remove corresponding message id(s). from "Unacknowledged" list/set.
-            Note that messages are persistent by default - i.e. they are saved by the broker, pending acknowledgement.
-            """
+        # Use a set as a bag of distinct message identifiers.
+        self.unacknowledged_messages = set()
 
-            if delivery_tag in unacknowledged_messages:
-                unacknowledged_messages.remove(delivery_tag)
+        # Use "Confirmation Model", if specified.
+        if confirm:
 
-        channel.confirm_select()
-        channel.events['basic_ack'].append(confirmation_callback)
+            def confirmation_callback(delivery_tag, multiple):
+                """ Handle "Publisher Acknowledgement" from broker.
 
-    def publish(message=None, routing_key=None):
+                Broker sends acknowledgement to a Publisher client - after receiving a corresponding ack. from a Consumer.
+
+                Remove corresponding message id(s). from "Unacknowledged" list/set.
+
+                Note that messages are persistent by default - i.e. they are saved by the broker, pending acknowledgement.
+
+
+                From http://www.rabbitmq.com/amqp-0-9-1-reference.html#:
+
+                'bit multiple':
+
+                If set to 1, the delivery tag is treated as "up to and including", so that multiple messages can be
+                acknowledged with a single method. If set to zero, the delivery tag refers to a single message.
+
+                If the multiple field is 1, and the delivery tag is zero, this indicates acknowledgement of all
+                outstanding messages.
+
+                A message MUST not be acknowledged more than once. The receiving peer MUST validate that a non-zero
+                delivery-tag refers to a delivered message, and raise a channel exception if this is not the case.
+                """
+
+                error = "confirmation_callback: "
+
+                assert multiple in [0, 1]
+                if multiple == 1:
+                    error += "multiple-message acknowledgement not supported."
+                    raise NotImplementedError(error)
+
+                if delivery_tag in self.unacknowledged_messages:
+                    self.unacknowledged_messages.remove(delivery_tag)
+                else:
+                    error += "delivery_tag '{}' to be removed not found in 'unacknowledged' set".format(delivery_tag)
+                    raise RuntimeError(error)
+
+            channel.confirm_select()
+            channel.events['basic_ack'].add(confirmation_callback)
+
+        ## TO DO: update a count (corresponding to 'delivery_tag' value, we hope) and add it to set. Clumsy.
+        # Invoke parent class with full keyword arguments.
+        super().__init__(channel, exchange=exchange, **kwargs)
+
+
+    def publish(self, body=None, routing_key=None, **kwargs):
         """Publish message after noting id. in "Unacknowledged" set """
 
-        unacknowledged_messages.add(message.delivery_info)
-        producer.publish(message.body, routing_key)
+        # self.unacknowledged_messages.add(message.delivery_tag)
+        super().publish(body, routing_key=routing_key, **kwargs)
 
 
 # Get Producer, for 'outgoing' exchange and JSON "serializer" by default.
 def setup_producer(exchange=outgoing_exchange, queue_name=OUTGOING_QUEUE, confirm=True):
 
-    channel = setup_connection(exchange=exchange)
+    channel = setup_channel(exchange=exchange)
     logger.info("queue_name: {}".format(queue_name))
 
     # Make sure that outgoing queue exists!
     setup_queue(channel, name=queue_name, exchange=exchange)
 
+    ## ASYNCHRONOUS 'Publisher Acknowledgements'. Not well-supported by Kombu/py-amqp.
     producer = Producer(channel, exchange=exchange, confirm=confirm)
 
     return producer
@@ -178,7 +225,7 @@ def setup_producer(exchange=outgoing_exchange, queue_name=OUTGOING_QUEUE, confir
 def setup_consumer(exchange=incoming_exchange, queue_name=INCOMING_QUEUE, on_message=None):
     """ Create consumer with single queue and callback """
 
-    channel = setup_connection(exchange=exchange)
+    channel = setup_channel(exchange=exchange)
     logger.info("queue_name: {}".format(queue_name))
 
     # A consumer needs a queue, so create one (if necessary).
