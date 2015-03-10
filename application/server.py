@@ -80,8 +80,19 @@ echo("LOG_THRESHOLD_LEVEL = {}".format(log_threshold_level_name))
 
 
 # RabbitMQ connection; default user/password.
-def setup_connection(exchange=None):
+def setup_connection(exchange=None, confirm_publish=True):
     """ Attempt connection, with timeout.
+
+    'confirm' refers to the "Confirmation Model", with the broker as client to a publisher.
+
+    This can be for asynchronous operation, in which case channel.confirm_select() is called,
+    or for synchronous operation, which employs channel.basic_publish() in a blocking way; note
+    that this call is invoked via the Producer.publish() method, rather than being invoked directly.
+
+    Asynchronous mode does not seem to be well-supported however and the blocking approach is simpler,
+    so we will adopt that even though the performance may suffer.
+
+    See the "2013-09-04 02:39 P.M UTC" entry of http://amqp.readthedocs.org/en/latest/changelog.html for details.
 
     """
 
@@ -91,9 +102,7 @@ def setup_connection(exchange=None):
     with stopit.ThreadingTimeout(10) as to_ctx_mgr:
         assert to_ctx_mgr.state == to_ctx_mgr.EXECUTING
 
-        # N.B.: 'confirm_publish' refers to the "Confirmation Model", with the broker as client to a publisher.
-        ## connection = kombu.Connection(hostname=RP_HOSTNAME, transport_options={'confirm_publish': confirm_publish})
-        connection = kombu.Connection(hostname=RP_HOSTNAME)
+        connection = kombu.Connection(hostname=RP_HOSTNAME, transport_options={'confirm_publish': confirm_publish})
         app.logger.info(RP_HOSTNAME)
         connection.connect()
 
@@ -119,95 +128,8 @@ def setup_channel(exchange=None, connection=None):
     return channel
 
 
-class Producer(kombu.Producer):
-    """ Producer sub-class, using ASYNCHRONOUS "Confirmation Model" (aka "Publisher Acknowledgements").
-
-    See: https://www.rabbitmq.com/confirms.html
-
-    From http://amqp.readthedocs.org/en/latest/changelog.html:
-    * There is now a new Connection confirm_publish that will force any basic_publish call to wait for confirmation.
-    * Enabling publisher confirms like this degrades performance considerably, so use of 'confirm_select' is preferred.
-
-    From https://pypi.python.org/pypi/amqp:
-    * Channel.confirm_select() enables publisher confirms.
-    * Channel.events['basic_ack'].append(my_callback) adds a callback to be called when a message is confirmed.
-    * This callback is then called with the signature (delivery_tag, multiple)
-
-    Overrides the 'publish' method of kombu.Producer class.
-    """
-
-
-    def __init__(self, channel, exchange=None, confirm=True, **kwargs):
-
-        # Run-time checks.
-        assert channel is not None
-        assert exchange is not None
-        assert type(confirm) is bool
-
-        logger.debug("channel: {}".format(channel))
-        logger.debug("exchange: {}".format(exchange))
-        logger.debug("confirm: {}".format(confirm))
-
-        # Use a set as a bag of distinct message identifiers.
-        self.unacknowledged_messages = set()
-
-        # Use "Confirmation Model", if specified.
-        if confirm:
-
-            def confirmation_callback(delivery_tag, multiple):
-                """ Handle "Publisher Acknowledgement" from broker.
-
-                Broker sends acknowledgement to a Publisher client - after receiving a corresponding ack. from a Consumer.
-
-                Remove corresponding message id(s). from "Unacknowledged" list/set.
-
-                Note that messages are persistent by default - i.e. they are saved by the broker, pending acknowledgement.
-
-
-                From http://www.rabbitmq.com/amqp-0-9-1-reference.html#:
-
-                'bit multiple':
-
-                If set to 1, the delivery tag is treated as "up to and including", so that multiple messages can be
-                acknowledged with a single method. If set to zero, the delivery tag refers to a single message.
-
-                If the multiple field is 1, and the delivery tag is zero, this indicates acknowledgement of all
-                outstanding messages.
-
-                A message MUST not be acknowledged more than once. The receiving peer MUST validate that a non-zero
-                delivery-tag refers to a delivered message, and raise a channel exception if this is not the case.
-                """
-
-                error = "confirmation_callback: "
-
-                assert multiple in [0, 1]
-                if multiple == 1:
-                    error += "multiple-message acknowledgement not supported."
-                    raise NotImplementedError(error)
-
-                if delivery_tag in self.unacknowledged_messages:
-                    self.unacknowledged_messages.remove(delivery_tag)
-                else:
-                    error += "delivery_tag '{}' to be removed not found in 'unacknowledged' set".format(delivery_tag)
-                    raise RuntimeError(error)
-
-            channel.confirm_select()
-            channel.events['basic_ack'].add(confirmation_callback)
-
-        ## TO DO: update a count (corresponding to 'delivery_tag' value, we hope) and add it to set. Clumsy.
-        # Invoke parent class with full keyword arguments.
-        super().__init__(channel, exchange=exchange, **kwargs)
-
-
-    def publish(self, body=None, routing_key=None, **kwargs):
-        """Publish message after noting id. in "Unacknowledged" set """
-
-        # self.unacknowledged_messages.add(message.delivery_tag)
-        super().publish(body, routing_key=routing_key, **kwargs)
-
-
 # Get Producer, for 'outgoing' exchange and JSON "serializer" by default.
-def setup_producer(exchange=outgoing_exchange, queue_name=OUTGOING_QUEUE, confirm=True):
+def setup_producer(exchange=outgoing_exchange, queue_name=OUTGOING_QUEUE, serializer='json'):
 
     channel = setup_channel(exchange=exchange)
     logger.info("queue_name: {}".format(queue_name))
@@ -215,14 +137,13 @@ def setup_producer(exchange=outgoing_exchange, queue_name=OUTGOING_QUEUE, confir
     # Make sure that outgoing queue exists!
     setup_queue(channel, name=queue_name, exchange=exchange)
 
-    ## ASYNCHRONOUS 'Publisher Acknowledgements'. Not well-supported by Kombu/py-amqp.
-    producer = Producer(channel, exchange=exchange, confirm=confirm)
+    producer = kombu.Producer(channel, exchange=exchange, serializer=serializer)
 
     return producer
 
 
 # Consumer, for 'incoming' queue by default.
-def setup_consumer(exchange=incoming_exchange, queue_name=INCOMING_QUEUE, on_message=None):
+def setup_consumer(exchange=incoming_exchange, queue_name=INCOMING_QUEUE, callback=None):
     """ Create consumer with single queue and callback """
 
     channel = setup_channel(exchange=exchange)
@@ -231,7 +152,7 @@ def setup_consumer(exchange=incoming_exchange, queue_name=INCOMING_QUEUE, on_mes
     # A consumer needs a queue, so create one (if necessary).
     queue = setup_queue(channel, name=queue_name, exchange=exchange)
 
-    consumer = kombu.Consumer(channel, queues=queue, on_message=on_message, accept=['json'])
+    consumer = kombu.Consumer(channel, queues=queue, callbacks=[callback], accept=['json'])
 
     return consumer
 
@@ -268,19 +189,19 @@ def run():
     # @TO DO: This may unpack incoming messages, then pack them again when forwarding; consider 'on_message()' instead.
     # ['body' is decoded content, 'message' is the packet as a whole].
 
-    def process_message(message, exc):
-        ''' Forward messages from the 'System of Record' to the outside world '''
+    def process_message(body, message):
+        """ Forward messages from the 'System of Record' to the outside world """
 
         logger.info("RECEIVED MSG - delivery_info: {}".format(message.delivery_info))
 
         # Forward message to outgoing exchange.
-        producer.publish(message=message, routing_key=OUTGOING_QUEUE)
+        producer.publish(body, routing_key=OUTGOING_QUEUE)
 
         # Acknowledge message only after publish(); if that fails, message is still in queue.
         message.ack()
 
     # Create consumer with default exchange/queue.
-    consumer = setup_consumer(on_message=process_message)
+    consumer = setup_consumer(callback=process_message)
     consumer.consume()
 
     # Loop "forever", as a service.

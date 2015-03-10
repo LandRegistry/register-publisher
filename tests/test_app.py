@@ -36,9 +36,7 @@ class TestRegisterPublisher(unittest.TestCase):
     def consume(self, exchange=server.incoming_exchange, queue_name=server.INCOMING_QUEUE):
         """ Get message via callback mechanism """
 
-        callback = self.handle_message
-
-        with server.setup_consumer(exchange=exchange, queue_name=queue_name, callback=callback) as consumer:
+        with server.setup_consumer(exchange=exchange, queue_name=queue_name, callback=self.handle_message) as consumer:
 
             # 'consume' may be a misnomer here - it just initiates the consumption process, I believe.
             consumer.consume()
