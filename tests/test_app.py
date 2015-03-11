@@ -68,6 +68,9 @@ class TestRegisterPublisher(unittest.TestCase):
     def setUp(self):
         """ Establish connection and other resources; prepare """
 
+        test_title = self.id().split(sep='.')[-1]
+        server.echo(test_title)
+
         # Ensure that message broker is alive, etc.
         self.reset()
 
@@ -80,8 +83,6 @@ class TestRegisterPublisher(unittest.TestCase):
 
     def test_incoming_queue(self):
         """ Basic check of 'incoming' message via default direct exchange """
-
-        server.echo("test_incoming_queue")
 
         self.message = make_message()
 
@@ -99,10 +100,8 @@ class TestRegisterPublisher(unittest.TestCase):
         self.assertEqual(self.message, self.payload)
 
     # N.B.: this test reverses the default 'producer' and 'consumer' targets.
-    def test_end_to_end(self):
+    def test_stored_message(self):
         """ Send message from dummy "System Of Record", then consume and check it. """
-
-        server.echo("test_end_to_end")
 
         self.message = make_message()
 
@@ -112,13 +111,11 @@ class TestRegisterPublisher(unittest.TestCase):
         server_run.start()
 
         # Send a message to 'incoming' exchange - i.e. as if from SoR.
-        exchange=server.incoming_exchange
-        queue_name=server.INCOMING_QUEUE
-        with server.setup_producer(exchange=exchange, queue_name=queue_name) as producer:
+        with server.setup_producer(exchange=server.incoming_exchange, queue_name=server.INCOMING_QUEUE) as producer:
             producer.publish(body=self.message, routing_key=server.INCOMING_QUEUE)
             logger.debug(self.message)
 
-        # Wait long enough for message to be picked up.
+        # Kill application; wait long enough for message to be stored.
         # N.B.: 1 second may be insufficient, for a full coverage check during testing.
         server_run.join(timeout=5)
         logger.info("'server.run()' completed")
@@ -126,25 +123,19 @@ class TestRegisterPublisher(unittest.TestCase):
         logger.info("'server.run()' terminated")
 
         # Consume message from outgoing exchange.
-        exchange=server.outgoing_exchange
-        queue_name=server.OUTGOING_QUEUE
-        self.consume(exchange=exchange, queue_name=queue_name)
+        self.consume(exchange=server.outgoing_exchange, queue_name=server.OUTGOING_QUEUE)
 
         self.assertEqual(self.message, self.payload)
 
-    def test_multiple_end_to_end(self):
-        """ Check many messages. """
-
-        server.echo("test_multiple_end_to_end")
+    def test_end_to_end(self, count=1):
+        """ Send message from dummy "System Of Record", then consume and check it. """
 
         server_run = Process(target=server.run)
         server_run.start()
 
         # Send a message to 'incoming' exchange - i.e. as if from SoR.
-        exchange=server.incoming_exchange
-        queue_name=server.INCOMING_QUEUE
-        with server.setup_producer(exchange=exchange, queue_name=queue_name) as producer:
-            for n in range(100):
+        with server.setup_producer(exchange=server.incoming_exchange, queue_name=server.INCOMING_QUEUE) as producer:
+            for n in range(count):
 
                 # Message to be sent.
                 self.message = make_message()
@@ -153,18 +144,20 @@ class TestRegisterPublisher(unittest.TestCase):
                 logger.debug(self.message)
 
                 # Consume message from outgoing exchange, via callback.
-                exchange=server.outgoing_exchange
-                queue_name=server.OUTGOING_QUEUE
-                self.consume(exchange=exchange, queue_name=queue_name)
+                self.consume(exchange=server.outgoing_exchange, queue_name=server.OUTGOING_QUEUE)
 
                 self.assertEqual(self.message, self.payload)
 
         # Wait long enough for all messages to be processed.
-        server_run.join(timeout=10)
+        server_run.join(timeout=(count // 10) + 1)
         logger.info("'server.run()' completed")
         server_run.terminate()
         logger.info("'server.run()' terminated")
 
+    def test_multiple_end_to_end(self):
+        """ Check many messages. """
+
+        self.test_end_to_end(100)
 
 if __name__ == '__main__':
     unittest.main()

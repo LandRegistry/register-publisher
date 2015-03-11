@@ -84,7 +84,7 @@ echo("LOG_THRESHOLD_LEVEL = {}".format(log_threshold_level_name))
 
 
 # RabbitMQ connection; default user/password.
-def setup_connection(confirm_publish=True):
+def setup_connection(hostname=RP_HOSTNAME, confirm_publish=True):
     """ Attempt connection, with timeout.
 
     'confirm_publish' refers to the "Confirmation Model", with the broker as client to a publisher.
@@ -109,8 +109,8 @@ def setup_connection(confirm_publish=True):
     with stopit.ThreadingTimeout(10) as to_ctx_mgr:
         assert to_ctx_mgr.state == to_ctx_mgr.EXECUTING
 
-        connection = kombu.Connection(hostname=RP_HOSTNAME, transport_options={'confirm_publish': confirm_publish})
-        app.logger.info(RP_HOSTNAME)
+        connection = kombu.Connection(hostname=hostname, transport_options={'confirm_publish': confirm_publish})
+        app.logger.info(hostname)
         connection.connect()
 
     if to_ctx_mgr.state == to_ctx_mgr.TIMED_OUT:
@@ -142,7 +142,6 @@ def setup_channel(exchange=None, connection=None):
 def setup_producer(exchange=outgoing_exchange, queue_name=OUTGOING_QUEUE, serializer='json'):
 
     channel = setup_channel(exchange=exchange)
-    logger.info("queue_name: {}".format(queue_name))
 
     # Make sure that outgoing queue exists!
     setup_queue(channel, name=queue_name, exchange=exchange)
@@ -191,6 +190,7 @@ def setup_queue(channel, name=None, exchange=incoming_exchange, key=None, durabl
 
 
 def run():
+    """ "System of Record" to "Feeder" re-publisher. """
 
     def errback(exc, interval):
             """ Callback for use with 'ensure/autoretry'. """
