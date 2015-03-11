@@ -51,18 +51,8 @@ class TestRegisterPublisher(unittest.TestCase):
                 consumer.cancel()
                 consumer.close()
 
-    def setUp(self):
-        """ Establish connection and other resources; prepare """
-
-        with server.setup_connection() as connection:
-
-            # Ensure that message broker is alive
-            self.assertEqual(connection.connected, True)
-
-        self.message = None             # Message to be sent.
-        self.payload = None             # Corresponding 'payload' of message received.
-
-    def tearDown(self):
+    def reset(self):
+        """ Clear the decks. """
 
         with server.setup_connection() as connection:
 
@@ -74,6 +64,19 @@ class TestRegisterPublisher(unittest.TestCase):
 
             queue = server.setup_queue(connection, name=server.OUTGOING_QUEUE, exchange=server.outgoing_exchange)
             queue.delete()
+
+    def setUp(self):
+        """ Establish connection and other resources; prepare """
+
+        # Ensure that message broker is alive, etc.
+        self.reset()
+
+        self.message = None             # Message to be sent.
+        self.payload = None             # Corresponding 'payload' of message received.
+
+    def tearDown(self):
+
+        self.reset()
 
     def test_incoming_queue(self):
         """ Basic check of 'incoming' message via default direct exchange """

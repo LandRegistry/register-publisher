@@ -28,7 +28,7 @@ More importantly perhaps, this package acts as a proxy publisher for the System 
 
 # Flask is invoked here purely to get the configuration values in a consistent manner!
 app = Flask(__name__)
-app.config.from_object(os.environ.get('SETTINGS'))
+app.config.from_object(os.getenv('SETTINGS', "config.DevelopmentConfig"))
 
 # Routing key is same as queue name in "default direct exchange" case; exchange name is blank.
 INCOMING_QUEUE = app.config['INCOMING_QUEUE']
@@ -40,6 +40,10 @@ RP_HOSTNAME = app.config['RP_HOSTNAME']
 #   durable: True (exchange remains 'active' on server re-start)
 incoming_exchange = kombu.Exchange(type="direct")
 outgoing_exchange = kombu.Exchange(type="fanout")
+
+# Constraints, etc.
+MAX_RETRIES = app.config['MAX_RETRIES']
+
 
 # Logger-independent output to 'stderr'.
 def echo(message):
@@ -188,25 +192,48 @@ def setup_queue(channel, name=None, exchange=incoming_exchange, key=None, durabl
 
 def run():
 
-    # Producer for outgoing (default) exchange.
-    producer = setup_producer()
+    def errback(exc, interval):
+            """ Callback for use with 'ensure/autoretry'. """
 
-    # This is used to consume messages from the "System of Record", then forward them to the outside world.
-    # @TO DO: This may unpack incoming messages, then pack them again when forwarding; consider 'on_message()' instead.
-    # ['body' is decoded content, 'message' is the packet as a whole].
+            logger.error('Error: {}'.format(exc))
+            logger.info('Retry in {} seconds.'.format(interval))
 
+    def ensure(connection, instance, method, *args, **kwargs):
+        """ Retries 'method' if it raises connection or channel error.
+
+            Error is re-raised if 'max_retries' exceeded.
+
+        """
+        _method = getattr(instance, method)
+        _wrapper = connection.ensure(instance, _method, errback=errback, max_retries=MAX_RETRIES)
+
+        _wrapper(*args, **kwargs)
+
+    # Handler (callback) for consumer.
     def process_message(body, message):
-        """ Forward messages from the 'System of Record' to the outside world """
+        """ Forward messages from the 'System of Record' to the outside world
+
+        'body' is decoded content, 'message' is the packet as a whole.
+
+        N.B.:
+          This will unpack incoming messages, then pack them again when forwarding.
+          'on_message()' doesn't really help, because publish() requires a message body.
+
+        """
 
         logger.info("RECEIVED MSG - delivery_info: {}".format(message.delivery_info))
 
-        # Forward message to outgoing exchange.
-        producer.publish(body, routing_key=OUTGOING_QUEUE)
+        # Forward message to outgoing exchange, with retry management.
+        ensure(producer.connection, producer, 'publish', body, routing_key=OUTGOING_QUEUE)
 
         # Acknowledge message only after publish(); if that fails, message is still in queue.
         message.ack()
 
-    # Create consumer with default exchange/queue.
+
+    # Producer for outgoing exchange.
+    producer = setup_producer()
+
+    # Create consumer with incoming exchange/queue.
     consumer = setup_consumer(callback=process_message)
     consumer.consume()
 
@@ -215,7 +242,8 @@ def run():
     while True:
         try:
             # "Wait for a single event from the server".
-            consumer.connection.drain_events()
+            # consumer.connection.drain_events()
+            ensure(consumer.connection, consumer.connection, 'drain_events')
 
         # Permit an explicit abort.
         except KeyboardInterrupt:
@@ -223,7 +251,8 @@ def run():
             break
         # Trap (log) everything else.
         except Exception as e:
-            logger.error(e)
+            err_line_no = sys.exc_info()[2].tb_lineno
+            logger.error("{}: {}".format(err_line_no, str(e)))
 
             # If we ignore the problem, perhaps it will go away ...
             time.sleep(10)
