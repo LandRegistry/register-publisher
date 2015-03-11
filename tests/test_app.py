@@ -1,5 +1,4 @@
 #!/bin/python
-import sys; sys.path.insert(0, 'c:\\Users\\User\\register-publisher')
 import json
 import unittest
 import datetime
@@ -136,16 +135,15 @@ class TestRegisterPublisher(unittest.TestCase):
         # Send a message to 'incoming' exchange - i.e. as if from SoR.
         with server.setup_producer(exchange=server.incoming_exchange, queue_name=server.INCOMING_QUEUE) as producer:
 
+            producer.publish(body=self.message)
+
             # Kill connection to broker.
             producer.connection.close()
 
-            producer.publish(body=self.message)
-
         # Block (wait) until app times out or terminates.
         self.app.join(timeout=5)
-        logger.info("'server.run()' completed")
 
-        # Consume message from outgoing exchange.
+        # Consume message from outgoing exchange; this will establish another connection.
         self.consume(exchange=server.outgoing_exchange, queue_name=server.OUTGOING_QUEUE)
 
         self.assertEqual(self.message, self.payload)
