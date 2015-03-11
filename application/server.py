@@ -146,7 +146,8 @@ def setup_producer(exchange=outgoing_exchange, queue_name=OUTGOING_QUEUE, serial
     # Make sure that outgoing queue exists!
     setup_queue(channel, name=queue_name, exchange=exchange)
 
-    producer = kombu.Producer(channel, exchange=exchange, serializer=serializer)
+    # Publish message to given queue.
+    producer = kombu.Producer(channel, exchange=exchange, routing_key=queue_name, serializer=serializer)
 
     return producer
 
@@ -224,7 +225,7 @@ def run():
         logger.info("RECEIVED MSG - delivery_info: {}".format(message.delivery_info))
 
         # Forward message to outgoing exchange, with retry management.
-        ensure(producer.connection, producer, 'publish', body, routing_key=OUTGOING_QUEUE)
+        ensure(producer.connection, producer, 'publish', body)
 
         # Acknowledge message only after publish(); if that fails, message is still in queue.
         message.ack()
