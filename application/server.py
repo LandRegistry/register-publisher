@@ -135,6 +135,8 @@ def setup_channel(exchange=None, connection=None):
     exchange.maybe_bind(channel)
     maybe_declare(exchange, channel)
 
+    logger.debug('channel_id: {}'.format(channel.channel_id))
+
     return channel
 
 
@@ -148,6 +150,11 @@ def setup_producer(exchange=outgoing_exchange, queue_name=OUTGOING_QUEUE, serial
 
     # Publish message to given queue.
     producer = kombu.Producer(channel, exchange=exchange, routing_key=queue_name, serializer=serializer)
+
+    logger.debug('channel_id: {}'.format(producer.channel.channel_id))
+    logger.debug('exchange: {}'.format(producer.exchange.name))
+    logger.debug('routing_key: {}'.format(producer.routing_key))
+    logger.debug('serializer: {}'.format(producer.serializer))
 
     return producer
 
@@ -163,6 +170,9 @@ def setup_consumer(exchange=incoming_exchange, queue_name=INCOMING_QUEUE, callba
     queue = setup_queue(channel, name=queue_name, exchange=exchange)
 
     consumer = kombu.Consumer(channel, queues=queue, callbacks=[callback], accept=['json'])
+
+    logger.debug('channel_id: {}'.format(consumer.channel.channel_id))
+    logger.debug('queue(s): {}'.format(consumer.queues))
 
     return consumer
 

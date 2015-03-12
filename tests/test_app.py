@@ -24,6 +24,7 @@ class Application(object):
     def __init__(self, target=server.run):
         self.target = target
         self.process = None
+        logger.debug("Target:'{}'.".format(self.target))
 
     def start(self):
         self.process = Process(target=self.target)
@@ -72,6 +73,8 @@ class TestRegisterPublisher(unittest.TestCase):
     def reset(self):
         """ Clear the decks. """
 
+        logger.debug("reset")
+
         with server.setup_connection() as connection:
 
             # Need a connection to delete the queues.
@@ -88,10 +91,12 @@ class TestRegisterPublisher(unittest.TestCase):
     def setUp(self):
         """ Establish connection and other resources; prepare """
 
+        logger.debug("setUp")
+
         self.app = Application()
 
         test_title = self.id().split(sep='.')[-1]
-        server.echo(test_title)
+        logger.info(test_title)
 
         # Ensure that message broker is alive, etc.
         self.reset()
@@ -103,6 +108,8 @@ class TestRegisterPublisher(unittest.TestCase):
         self.app.start()
 
     def tearDown(self):
+
+        logger.debug("setUp")
 
         # N.B.: app needs to be terminated before queues can be deleted!
         self.app.terminate()
@@ -141,15 +148,15 @@ class TestRegisterPublisher(unittest.TestCase):
             producer.connection.close()
 
         # Block (wait) until app times out or terminates.
-        self.app.join(timeout=5)
+        # self.app.join(timeout=5)
 
         # Consume message from outgoing exchange; this will establish another connection.
         self.consume(exchange=server.outgoing_exchange, queue_name=server.OUTGOING_QUEUE)
 
         self.assertEqual(self.message, self.payload)
 
-    def test_stored_message(self):
-        """ Store message from dummy "System Of Record", then consume later and check it. """
+    def test_stored_incoming_message(self):
+        """ Store message in INCOMING queue, then consume later and check it. """
 
         self.app.terminate()
 
@@ -161,6 +168,21 @@ class TestRegisterPublisher(unittest.TestCase):
             logger.debug(self.message)
 
         self.app.start()
+
+        # Consume message from outgoing exchange.
+        self.consume(exchange=server.outgoing_exchange, queue_name=server.OUTGOING_QUEUE)
+
+        self.assertEqual(self.message, self.payload)
+
+    def test_stored_outgoing_message(self):
+        """ Store message in OUTGOING queue, then consume later and check it. """
+
+        self.message = make_message()
+
+        # Send a message to 'incoming' exchange - i.e. as if from SoR.
+        with server.setup_producer(exchange=server.incoming_exchange, queue_name=server.INCOMING_QUEUE) as producer:
+            producer.publish(body=self.message)
+            logger.debug(self.message)
 
         # Kill application; wait long enough for message to be stored.
         # N.B.: 1 second may be insufficient, for a full coverage check during testing.
