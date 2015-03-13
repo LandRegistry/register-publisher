@@ -75,3 +75,14 @@ Add a test message
 ```
 rabbitmqadmin publish exchange=amq.default routing_key=system_of_record payload="hello, world"
 ```
+
+## Audit Requirements
+
+From "Audit Requirements for the Migration Process":
+
+* Activities to be logged;
+* Pulls from System of Record queue
+* Acknowledges pull
+* Pushes to the Register Publisher queue
+* Acknowledges successful receipt by Register Publisher queue
+
