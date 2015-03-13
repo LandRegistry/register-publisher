@@ -80,7 +80,8 @@ rabbitmqadmin publish exchange=amq.default routing_key=system_of_record payload=
 
 From "Audit Requirements for the Migration Process":
 
-* Activities to be logged;
+Activities to be logged:
+
 * Pulls from System of Record queue
 * Acknowledges pull
 * Pushes to the Register Publisher queue
