@@ -17,7 +17,7 @@ case "$DEPLOY_ENVIRONMENT" in
   SETTINGS="config.PreviewConfig"
   ;;
   preproduction)
-  SETTINGS="config.PreproductionConfig"
+  SETTINGS="config.PreProductionConfig"
   ;;
   production)
   SETTINGS="config.ProductionConfig"
