@@ -34,7 +34,7 @@ def get_last_queue_message():
 #Gets the next message from target queue.  Returns the signed JSON.
 def remove_all_messages():
     while True:
-        queue_message = get_last_incoming_queue_message()
+        queue_message = get_last_queue_message()
         if queue_message == 'no message':
             break
     return "done", 202
