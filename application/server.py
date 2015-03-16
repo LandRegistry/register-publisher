@@ -28,7 +28,7 @@ More importantly perhaps, this package acts as a proxy publisher for the System 
 
 # Flask is invoked here purely to get the configuration values in a consistent manner!
 app = Flask(__name__)
-app.config.from_object(os.getenv('SETTINGS', "config.DevelopmentConfig"))
+app.config.from_object(os.getenv('SETTINGS', "config.ProductionConfig"))
 
 # Routing key is same as queue name in "default direct exchange" case; exchange name is blank.
 INCOMING_QUEUE = app.config['INCOMING_QUEUE']
