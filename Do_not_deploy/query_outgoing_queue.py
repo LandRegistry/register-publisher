@@ -7,7 +7,7 @@ app.config.from_object(os.environ.get('SETTINGS'))
 
 @app.route("/getnextqueuemessage")
 #Gets the next message from target queue.  Returns the signed JSON.
-def get_last_incoming_queue_message():
+def get_last_queue_message():
     #: By default messages sent to exchanges are persistent (delivery_mode=2),
     #: and queues and exchanges are durable.
     exchange = Exchange()
