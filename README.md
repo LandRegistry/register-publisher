@@ -16,6 +16,9 @@ See the [wiki](https://github.com/LandRegistry/register-publisher/wiki) for desi
 - See 'requirements.txt'; in particular, additions for 'kombu' and 'stopit'.
 - An AMQP broker is required, typically "RabbitMQ".
 
+##Prerequisites
+
+* Account with necessary privileges needs to be created; default RabbitMQ 'guest' account is restricted to _localhost_ use only.
 
 ##how to run in development
 
