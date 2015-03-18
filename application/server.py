@@ -45,6 +45,7 @@ outgoing_exchange = kombu.Exchange(type="fanout")
 # Constraints, etc.
 MAX_RETRIES = app.config['MAX_RETRIES']
 
+LOG_NAME = "Register-Publisher"
 
 # Logger-independent output to 'stderr'.
 def echo(message):
@@ -63,7 +64,7 @@ def setup_logger(name=__name__):
 
     return logger
 
-logger = setup_logger('Register-Publisher')
+logger = setup_logger(LOG_NAME)
 
 log_threshold_level_name = logging.getLevelName(logger.getEffectiveLevel())
 echo("LOG_THRESHOLD_LEVEL = {}".format(log_threshold_level_name))
@@ -189,6 +190,8 @@ def setup_queue(channel, name=None, exchange=incoming_exchange, key=None, durabl
 # This is executed as a separate process by unit tests; cannot refer to 'INCOMING_QUEUE' etc. in that case.
 def run():
     """ "System of Record" to "Feeder" re-publisher. """
+
+    logger = setup_logger(LOG_NAME)
 
     def errback(exc, interval):
             """ Callback for use with 'ensure/autoretry'. """

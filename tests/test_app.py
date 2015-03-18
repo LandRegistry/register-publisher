@@ -112,6 +112,7 @@ class TestRegisterPublisher(unittest.TestCase):
         logger.debug("setUp")
 
         # N.B.: app needs to be terminated before queues can be deleted!
+        self.app.join(timeout=5)
         self.app.terminate()
 
         self.reset()
