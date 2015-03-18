@@ -24,12 +24,11 @@ logger = server.setup_logger(__name__)
 
 # Basic test data.
 def make_message():
-    dt=str(datetime.datetime.now())
+    dt = str(datetime.datetime.now())
     return json.dumps(dt.split())
 
 
 class TestRegisterPublisher(unittest.TestCase):
-
     #: This can be the callback applied when a message is received - i.e. "consume()" case.
     def handle_message(self, body, message):
         # Note: 'body' may have been pickled, so refer to 'payload' instead.
@@ -43,16 +42,22 @@ class TestRegisterPublisher(unittest.TestCase):
     def setUp(self):
         """ Establish connection and other resources; prepare """
 
-        with server.setup_connection() as connection:
-
+        with server.setup_connection(server.OUTGOING_QUEUE_HOSTNAME) as outgoing_connection:
             # Ensure that message broker is alive
-            self.assertEqual(connection.connected, True)
+            self.assertEqual(outgoing_connection.connected, True)
 
             # We also need relevant queues established before publishing to exchange!
-            queue = server.setup_queue(connection, name=server.INCOMING_QUEUE, exchange=server.incoming_exchange)
+            queue = server.setup_queue(outgoing_connection, name=server.OUTGOING_QUEUE,
+                                       exchange=server.outgoing_exchange)
             queue.purge()
 
-            queue = server.setup_queue(connection, name=server.OUTGOING_QUEUE, exchange=server.outgoing_exchange)
+        with server.setup_connection(server.INCOMING_QUEUE_HOSTNAME) as incoming_connection:
+            # Ensure that message broker is alive
+            self.assertEqual(incoming_connection.connected, True)
+
+            # We also need relevant queues established before publishing to exchange!
+            queue = server.setup_queue(incoming_connection, name=server.INCOMING_QUEUE,
+                                       exchange=server.incoming_exchange)
             queue.purge()
 
         # Message to be sent.
@@ -62,17 +67,22 @@ class TestRegisterPublisher(unittest.TestCase):
         self.payload = None
 
     def tearDown(self):
-
-        with server.setup_connection() as connection:
-
+        with server.setup_connection(server.INCOMING_QUEUE_HOSTNAME) as incoming_connection:
             # Need a connection to delete the queues.
-            self.assertEqual(connection.connected, True)
+            self.assertEqual(incoming_connection.connected, True)
 
-            queue = server.setup_queue(connection, name=server.INCOMING_QUEUE, exchange=server.incoming_exchange)
+            queue = server.setup_queue(incoming_connection, name=server.INCOMING_QUEUE,
+                                       exchange=server.incoming_exchange)
             queue.delete()
 
-            queue = server.setup_queue(connection, name=server.OUTGOING_QUEUE, exchange=server.outgoing_exchange)
+        with server.setup_connection(server.OUTGOING_QUEUE_HOSTNAME) as outgoing_connection:
+            # Need a connection to delete the queues.
+            self.assertEqual(outgoing_connection.connected, True)
+
+            queue = server.setup_queue(outgoing_connection, name=server.OUTGOING_QUEUE,
+                                       exchange=server.outgoing_exchange)
             queue.delete()
+
 
     def test_incoming_queue(self):
         """ Basic check of 'incoming' message via default direct exchange """
@@ -80,15 +90,15 @@ class TestRegisterPublisher(unittest.TestCase):
         exchange = server.incoming_exchange
         queue_name = server.INCOMING_QUEUE
 
-        with server.setup_connection() as connection:
+        with server.setup_connection(server.INCOMING_QUEUE_HOSTNAME) as connection:
             producer = server.setup_producer(connection, exchange=exchange)
             producer.publish(body=self.message, routing_key=queue_name)
             logger.info("Put message, exchange: {}, {}".format(self.message, exchange))
 
-       # Wait a bit - one second should be long enough.
+            # Wait a bit - one second should be long enough.
         time.sleep(1)
 
-        with server.setup_connection() as connection:
+        with server.setup_connection(server.INCOMING_QUEUE_HOSTNAME) as connection:
             consumer = server.setup_consumer(connection, exchange=exchange, queue_name=queue_name)
             queue = consumer.queues[0]
             message = queue.get()
@@ -101,7 +111,9 @@ class TestRegisterPublisher(unittest.TestCase):
 
             self.assertEqual(self.message, self.payload)
 
-    # N.B.: this test reverses the default 'producer' and 'consumer' targets.
+        # N.B.: this test reverses the default 'producer' and 'consumer' targets.
+
+
     def test_end_to_end(self):
         """ Send message from dummy "System Of Record", then consume and check it. """
 
@@ -110,18 +122,18 @@ class TestRegisterPublisher(unittest.TestCase):
         server_run.start()
 
         # Send a message to 'incoming' exchange - i.e. as if from SoR.
-        exchange=server.incoming_exchange
+        exchange = server.incoming_exchange
         with server.setup_producer(exchange=exchange) as producer:
             producer.publish(body=self.message, routing_key=server.INCOMING_QUEUE)
             logger.info(self.message)
 
-       # Wait a bit - one second should be long enough.
+            # Wait a bit - one second should be long enough.
         server_run.join(timeout=1)
         server_run.terminate()
 
         # Consume (poll) message from outgoing exchange.
-        exchange=server.outgoing_exchange
-        queue_name=server.OUTGOING_QUEUE
+        exchange = server.outgoing_exchange
+        queue_name = server.OUTGOING_QUEUE
         callback = self.handle_message
 
         with server.setup_consumer(exchange=exchange, queue_name=queue_name, callback=callback) as consumer:

@@ -11,11 +11,14 @@ This service will forward messages from the "System of Record" queue to the "fee
 See the [wiki](https://github.com/LandRegistry/register-publisher/wiki) for design notes, etc.
 
 
-##dependencies:
+##Dependencies:
 
 - See 'requirements.txt'; in particular, additions for 'kombu' and 'stopit'.
 - An AMQP broker is required, typically "RabbitMQ".
 
+##Prerequisites
+
+* Account with necessary privileges needs to be created; default RabbitMQ 'guest' account is restricted to _localhost_ use only.
 
 ##how to run in development
 
@@ -69,3 +72,21 @@ Start the server
 ```
 service rabbitmq-server start
 ```
+
+Add a test message
+
+```
+rabbitmqadmin publish exchange=amq.default routing_key=system_of_record payload="hello, world"
+```
+
+## Audit Requirements
+
+From "Audit Requirements for the Migration Process":
+
+Activities to be logged:
+
+* Pulls from System of Record queue
+* Acknowledges pull
+* Pushes to the Register Publisher queue
+* Acknowledges successful receipt by Register Publisher queue
+
