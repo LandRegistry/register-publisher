@@ -9,6 +9,7 @@ import time
 from flask import Flask
 from kombu.common import maybe_declare
 from amqp import AccessRefused
+from logger.setup_logging import setup_logging
 
 """
 Register-Publisher: forwards messages from the System of Record to the outside world, via AMQP "broadcast".
@@ -52,28 +53,13 @@ def echo(message):
 # Set up logger
 def setup_logger(name=__name__):
 
+    # Standard LR configuration.
+    setup_logging()
+
     # Specify base logging threshold level.
     ll = app.config['LOG_THRESHOLD_LEVEL']
     logger = logging.getLogger(name)
     logger.setLevel(ll)
-
-    # Formatter for log records.
-    FORMAT = "%(asctime)s %(filename)-12.12s#%(lineno)-5.5s %(funcName)-20.20s %(message)s"
-    formatter = logging.Formatter(FORMAT)
-
-    # Add 'timed rotating' file handler, for DEBUG-level messages or above.
-    # WARNING: do not use RotatingFileHandler, as this may result in a "ResourceWarning: unclosed file" fault!
-    filename = "{}.log".format(name)
-    file_handler = logging.handlers.TimedRotatingFileHandler(filename, when='D')
-    file_handler.setFormatter(formatter)
-    file_handler.setLevel(logging.DEBUG)
-    logger.addHandler(file_handler)
-
-    # Add 'console' handler, for errors only.
-    stream_handler = logging.StreamHandler()
-    stream_handler.setFormatter(formatter)
-    stream_handler.setLevel(logging.ERROR)
-    logger.addHandler(stream_handler)
 
     return logger
 
@@ -200,6 +186,7 @@ def setup_queue(channel, name=None, exchange=incoming_exchange, key=None, durabl
     return queue
 
 
+# This is executed as a separate process by unit tests; cannot refer to 'INCOMING_QUEUE' etc. in that case.
 def run():
     """ "System of Record" to "Feeder" re-publisher. """
 
@@ -215,6 +202,7 @@ def run():
             Error is re-raised if 'max_retries' exceeded.
 
         """
+        logger.debug("instance: {}, method: {}".format(instance.__class__, method))
         _method = getattr(instance, method)
         _wrapper = connection.ensure(instance, _method, errback=errback, max_retries=MAX_RETRIES)
 
@@ -232,13 +220,16 @@ def run():
 
         """
 
-        logger.info("RECEIVED MSG - delivery_info: {}".format(message.delivery_info))
+        logger.audit("Pull from incoming queue: {}".format(message.delivery_info))
 
         # Forward message to outgoing exchange, with retry management.
+        logger.audit("Push to outgoing queue: {}".format(message.delivery_info))
         ensure(producer.connection, producer, 'publish', body)
+        logger.audit("Acknowledged Push (implied): {}".format(message.delivery_tag))
 
         # Acknowledge message only after publish(); if that fails, message is still in queue.
         message.ack()
+        logger.audit("Acknowledged Pull: {}".format(message.delivery_tag))
 
 
     # Producer for outgoing exchange.
