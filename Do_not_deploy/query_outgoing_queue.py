@@ -7,11 +7,11 @@ app.config.from_object(os.environ.get('SETTINGS'))
 
 @app.route("/getnextqueuemessage")
 #Gets the next message from target queue.  Returns the signed JSON.
-def get_last_incoming_queue_message():
+def get_last_queue_message():
     #: By default messages sent to exchanges are persistent (delivery_mode=2),
     #: and queues and exchanges are durable.
     exchange = Exchange()
-    connection = Connection(app.config['RP_HOSTNAME'])
+    connection = Connection(app.config['OUTGOING_QUEUE_HOSTNAME'])
 
     # Create/access a queue bound to the connection.
     queue = Queue(app.config['OUTGOING_QUEUE'],
@@ -34,7 +34,7 @@ def get_last_incoming_queue_message():
 #Gets the next message from target queue.  Returns the signed JSON.
 def remove_all_messages():
     while True:
-        queue_message = get_last_incoming_queue_message()
+        queue_message = get_last_queue_message()
         if queue_message == 'no message':
             break
     return "done", 202
