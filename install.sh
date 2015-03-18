@@ -52,4 +52,5 @@ autostart=true
 autorestart=true
 user=$USER
 environment=$SUPERVISOR_ENV
+stopasgroup=true
 EOF
