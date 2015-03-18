@@ -13,7 +13,7 @@ case "$DEPLOY_ENVIRONMENT" in
   development)
   SUPERVISOR_ENV="SETTINGS=\"config.DevelopmentConfig\""
   ;;
-  test)
+  preview)
   SUPERVISOR_ENV="SETTINGS=\"config.PreviewConfig\""
   ;;
   preproduction)
