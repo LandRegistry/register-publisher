@@ -5,8 +5,8 @@ import os
 class Config(object):
     DEBUG = False
     LOG_LEVEL = os.getenv('LOG_LEVEL', 'ERROR')
-    INCOMING_QUEUE_HOSTNAME = os.getenv('INCOMING_QUEUE_HOSTNAME', "amqp://mqpublisher:mqpublisherpassword@localhost:5672/")   # RabbitMQ IP address
-    OUTGOING_QUEUE_HOSTNAME = os.getenv('OUTGOING_QUEUE_HOSTNAME', "amqp://mqpublisher:mqpublisherpassword@localhost:5672/")   # RabbitMQ IP address
+    INCOMING_QUEUE_HOSTNAME = os.getenv('INCOMING_QUEUE_HOSTNAME', "amqp://guest:guest@localhost:5672/")   # RabbitMQ IP address
+    OUTGOING_QUEUE_HOSTNAME = os.getenv('OUTGOING_QUEUE_HOSTNAME', "amqp://guest:guest@localhost:5672/")   # RabbitMQ IP address
     INCOMING_QUEUE = os.getenv('INCOMING_QUEUE', 'system_of_record')                  # SOR to RP queue name
     OUTGOING_QUEUE = os.getenv('OUTGOING_QUEUE', 'register_publisher')                  # Default outgoing queue name
     
