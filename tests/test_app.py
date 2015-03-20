@@ -15,7 +15,7 @@ logger = server.logger
 
 # Basic test data.
 def make_message():
-    dt=str(datetime.datetime.now())
+    dt = str(datetime.datetime.now())
     return json.dumps(dt.split())
 
 class Application(object):
@@ -53,10 +53,10 @@ class TestRegisterPublisher(unittest.TestCase):
 
         self.payload = message.payload
 
-    def consume(self, exchange=server.incoming_exchange, queue_name=server.INCOMING_QUEUE):
+    def consume(self, cfg=server.incoming_cfg):
         """ Get message via callback mechanism """
 
-        with server.setup_consumer(exchange=exchange, queue_name=queue_name, callback=self.handle_message) as consumer:
+        with server.setup_consumer(cfg=cfg, callback=self.handle_message) as consumer:
 
             # 'consume' may be a misnomer here - it just initiates the consumption process, I believe.
             consumer.consume()
@@ -75,18 +75,26 @@ class TestRegisterPublisher(unittest.TestCase):
 
         logger.debug("reset")
 
-        with server.setup_connection() as connection:
+        with server.setup_connection(server.outgoing_cfg.hostname) as outgoing_connection:
 
             # Need a connection to delete the queues.
-            self.assertEqual(connection.connected, True)
+            self.assertEqual(outgoing_connection.connected, True)
 
-            queue = server.setup_queue(connection, name=server.INCOMING_QUEUE, exchange=server.incoming_exchange)
+            outgoing_channel = outgoing_connection.channel()
+            queue = server.setup_queue(outgoing_channel, cfg=server.outgoing_cfg)
             queue.purge()
             queue.delete()
 
-            queue = server.setup_queue(connection, name=server.OUTGOING_QUEUE, exchange=server.outgoing_exchange)
+        with server.setup_connection(server.incoming_cfg.hostname) as incoming_connection:
+
+            # Need a connection to delete the queues.
+            self.assertEqual(incoming_connection.connected, True)
+
+            incoming_channel = incoming_connection.channel()
+            queue = server.setup_queue(incoming_channel, cfg=server.incoming_cfg)
             queue.purge()
             queue.delete()
+
 
     def setUp(self):
         """ Establish connection and other resources; prepare """
@@ -125,7 +133,7 @@ class TestRegisterPublisher(unittest.TestCase):
 
         self.message = make_message()
 
-        producer = server.setup_producer(exchange=server.incoming_exchange, queue_name=server.INCOMING_QUEUE)
+        producer = server.setup_producer(cfg=server.incoming_cfg)
         producer.publish(body=self.message)
         logger.info("Put message, exchange: {}, {}".format(self.message, producer.exchange))
 
@@ -141,7 +149,7 @@ class TestRegisterPublisher(unittest.TestCase):
         self.message = make_message()
 
         # Send a message to 'incoming' exchange - i.e. as if from SoR.
-        with server.setup_producer(exchange=server.incoming_exchange, queue_name=server.INCOMING_QUEUE) as producer:
+        with server.setup_producer(cfg=server.incoming_cfg) as producer:
 
             producer.publish(body=self.message)
 
@@ -152,7 +160,7 @@ class TestRegisterPublisher(unittest.TestCase):
         # self.app.join(timeout=5)
 
         # Consume message from outgoing exchange; this will establish another connection.
-        self.consume(exchange=server.outgoing_exchange, queue_name=server.OUTGOING_QUEUE)
+        self.consume(cfg=server.outgoing_cfg)
 
         self.assertEqual(self.message, self.payload)
 
@@ -164,14 +172,14 @@ class TestRegisterPublisher(unittest.TestCase):
         self.message = make_message()
 
         # Send a message to 'incoming' exchange - i.e. as if from SoR.
-        with server.setup_producer(exchange=server.incoming_exchange, queue_name=server.INCOMING_QUEUE) as producer:
+        with server.setup_producer(cfg=server.incoming_cfg) as producer:
             producer.publish(body=self.message)
             logger.debug(self.message)
 
         self.app.start()
 
         # Consume message from outgoing exchange.
-        self.consume(exchange=server.outgoing_exchange, queue_name=server.OUTGOING_QUEUE)
+        self.consume(cfg=server.outgoing_cfg)
 
         self.assertEqual(self.message, self.payload)
 
@@ -181,7 +189,7 @@ class TestRegisterPublisher(unittest.TestCase):
         self.message = make_message()
 
         # Send a message to 'incoming' exchange - i.e. as if from SoR.
-        with server.setup_producer(exchange=server.incoming_exchange, queue_name=server.INCOMING_QUEUE) as producer:
+        with server.setup_producer(cfg=server.incoming_cfg) as producer:
             producer.publish(body=self.message)
             logger.debug(self.message)
 
@@ -191,7 +199,7 @@ class TestRegisterPublisher(unittest.TestCase):
         logger.info("'server.run()' completed")
 
         # Consume message from outgoing exchange.
-        self.consume(exchange=server.outgoing_exchange, queue_name=server.OUTGOING_QUEUE)
+        self.consume(cfg=server.outgoing_cfg)
 
         self.assertEqual(self.message, self.payload)
 
@@ -199,7 +207,7 @@ class TestRegisterPublisher(unittest.TestCase):
         """ Send message from dummy "System Of Record", then consume and check it. """
 
         # Send a message to 'incoming' exchange - i.e. as if from SoR.
-        with server.setup_producer(exchange=server.incoming_exchange, queue_name=server.INCOMING_QUEUE) as producer:
+        with server.setup_producer(cfg=server.incoming_cfg) as producer:
             for n in range(count):
 
                 # Message to be sent.
@@ -209,7 +217,7 @@ class TestRegisterPublisher(unittest.TestCase):
                 logger.debug(self.message)
 
                 # Consume message from outgoing exchange, via callback.
-                self.consume(exchange=server.outgoing_exchange, queue_name=server.OUTGOING_QUEUE)
+                self.consume(cfg=server.outgoing_cfg)
 
                 self.assertEqual(self.message, self.payload)
 

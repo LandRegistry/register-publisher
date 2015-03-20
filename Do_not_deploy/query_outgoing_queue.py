@@ -11,7 +11,7 @@ def get_last_incoming_queue_message():
     #: By default messages sent to exchanges are persistent (delivery_mode=2),
     #: and queues and exchanges are durable.
     exchange = Exchange()
-    connection = Connection(app.config['RP_HOSTNAME'])
+    connection = Connection(app.config['OUTGOING_QUEUE_HOSTNAME'])
 
     # Create/access a queue bound to the connection.
     queue = Queue(app.config['OUTGOING_QUEUE'],

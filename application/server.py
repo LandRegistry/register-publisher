@@ -31,16 +31,8 @@ More importantly perhaps, this package acts as a proxy publisher for the System 
 app = Flask(__name__)
 app.config.from_object(os.getenv('SETTINGS', "config.ProductionConfig"))
 
-# Routing key is same as queue name in "default direct exchange" case; exchange name is blank.
-INCOMING_QUEUE = app.config['INCOMING_QUEUE']
-OUTGOING_QUEUE = app.config['OUTGOING_QUEUE']
-RP_HOSTNAME = app.config['RP_HOSTNAME']
-
-# Relevant Exchange default values:
-#   delivery_mode: '2' (persistent messages)
-#   durable: True (exchange remains 'active' on server re-start)
-incoming_exchange = kombu.Exchange(type="direct")
-outgoing_exchange = kombu.Exchange(type="fanout")
+incoming_cfg = app.config['INCOMING_CFG']
+outgoing_cfg = app.config['OUTGOING_CFG']
 
 # Constraints, etc.
 MAX_RETRIES = app.config['MAX_RETRIES']
@@ -57,6 +49,7 @@ def setup_logger(name=__name__):
     # Standard LR configuration.
     setup_logging()
 
+    import pdb; pdb.set_trace()
     # Specify base logging threshold level.
     ll = app.config['LOG_THRESHOLD_LEVEL']
     logger = logging.getLogger(name)
@@ -71,7 +64,7 @@ echo("LOG_THRESHOLD_LEVEL = {}".format(log_threshold_level_name))
 
 
 # RabbitMQ connection; default user/password.
-def setup_connection(hostname=RP_HOSTNAME, confirm_publish=True):
+def setup_connection(queue_hostname, confirm_publish=True):
     """ Attempt connection, with timeout.
 
     'confirm_publish' refers to the "Confirmation Model", with the broker as client to a publisher.
@@ -95,13 +88,12 @@ def setup_connection(hostname=RP_HOSTNAME, confirm_publish=True):
     # Attempt connection in a separate thread, as (implied) 'connect' call may hang if permissions not set etc.
     with stopit.ThreadingTimeout(10) as to_ctx_mgr:
         assert to_ctx_mgr.state == to_ctx_mgr.EXECUTING
-
-        connection = kombu.Connection(hostname=hostname, transport_options={'confirm_publish': confirm_publish})
-        app.logger.info(hostname)
+        connection = kombu.Connection(hostname=queue_hostname, transport_options={'confirm_publish': confirm_publish})
+        app.logger.info(queue_hostname)
         connection.connect()
 
     if to_ctx_mgr.state == to_ctx_mgr.TIMED_OUT:
-        err_msg = "Connection unavailable: {}".format(RP_HOSTNAME)
+        err_msg = "Connection unavailable: {}".format(queue_hostname)
         raise RuntimeError(err_msg)
 
     logger.info("URI: {}".format(connection.as_uri()))
@@ -110,13 +102,16 @@ def setup_connection(hostname=RP_HOSTNAME, confirm_publish=True):
 
 
 # RabbitMQ channel.
-def setup_channel(exchange=None, connection=None):
+def setup_channel(queue_hostname, exchange=None, connection=None):
     """ Get a channel and bind exchange to it. """
 
     assert exchange is not None
     logger.info("exchange: {}".format(exchange))
 
-    channel = setup_connection().channel() if connection is None else connection.channel
+    if connection is None:
+        channel = setup_connection(queue_hostname).channel()
+    else:
+        channel = connection.channel()
 
     # Bind/Declare exchange on broker if necessary.
     exchange.maybe_bind(channel)
@@ -128,15 +123,15 @@ def setup_channel(exchange=None, connection=None):
 
 
 # Get Producer, for 'outgoing' exchange and JSON "serializer" by default.
-def setup_producer(exchange=outgoing_exchange, queue_name=OUTGOING_QUEUE, serializer='json'):
+def setup_producer(cfg=outgoing_cfg, serializer='json'):
 
-    channel = setup_channel(exchange=exchange)
+    channel = setup_channel(cfg.hostname, exchange=cfg.exchange)
 
     # Make sure that outgoing queue exists!
-    setup_queue(channel, name=queue_name, exchange=exchange)
+    setup_queue(channel, cfg=cfg)
 
     # Publish message to given queue.
-    producer = kombu.Producer(channel, exchange=exchange, routing_key=queue_name, serializer=serializer)
+    producer = kombu.Producer(channel, exchange=cfg.exchange, routing_key=cfg.queue, serializer=serializer)
 
     logger.debug('channel_id: {}'.format(producer.channel.channel_id))
     logger.debug('exchange: {}'.format(producer.exchange.name))
@@ -147,14 +142,14 @@ def setup_producer(exchange=outgoing_exchange, queue_name=OUTGOING_QUEUE, serial
 
 
 # Consumer, for 'incoming' queue by default.
-def setup_consumer(exchange=incoming_exchange, queue_name=INCOMING_QUEUE, callback=None):
+def setup_consumer(cfg=incoming_cfg, callback=None):
     """ Create consumer with single queue and callback """
 
-    channel = setup_channel(exchange=exchange)
-    logger.info("queue_name: {}".format(queue_name))
+    channel = setup_channel(cfg.hostname, cfg.exchange)
+    logger.info("queue_name: {}".format(cfg.queue))
 
     # A consumer needs a queue, so create one (if necessary).
-    queue = setup_queue(channel, name=queue_name, exchange=exchange)
+    queue = setup_queue(channel, cfg=cfg)
 
     consumer = kombu.Consumer(channel, queues=queue, callbacks=[callback], accept=['json'])
 
@@ -164,14 +159,14 @@ def setup_consumer(exchange=incoming_exchange, queue_name=INCOMING_QUEUE, callba
     return consumer
 
 
-def setup_queue(channel, name=None, exchange=incoming_exchange, key=None, durable=True):
+def setup_queue(channel, cfg=None, key=None, durable=True):
     """ Return bound queue, "durable" by default """
 
-    if name is None or exchange is None:
-        raise RuntimeError("setup_queue: queue/exchange name required!")
+    if cfg is None:
+        raise RuntimeError("setup_queue: configuration 'cfg' required!")
 
-    routing_key = name if key is None else key
-    queue = kombu.Queue(name=name, exchange=exchange, routing_key=routing_key, durable=durable)
+    routing_key = cfg.queue if key is None else key
+    queue = kombu.Queue(name=cfg.queue, exchange=cfg.exchange, routing_key=routing_key, durable=durable)
     queue.maybe_bind(channel)
 
     # VIP: ensure that queue is declared! If it isn't, we can send message to queue but they die, silently :-(
@@ -182,7 +177,7 @@ def setup_queue(channel, name=None, exchange=incoming_exchange, key=None, durabl
     except AccessRefused:
         pass
 
-    logger.info("queue name, exchange, routing_key: {}, {}, {}".format(queue.name, exchange, routing_key))
+    logger.info("queue name, exchange, routing_key: {}, {}, {}".format(queue.name, cfg.exchange, routing_key))
 
     return queue
 
