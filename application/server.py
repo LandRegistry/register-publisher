@@ -49,7 +49,6 @@ def setup_logger(name=__name__):
     # Standard LR configuration.
     setup_logging()
 
-    import pdb; pdb.set_trace()
     # Specify base logging threshold level.
     ll = app.config['LOG_THRESHOLD_LEVEL']
     logger = logging.getLogger(name)
