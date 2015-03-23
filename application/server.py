@@ -126,13 +126,13 @@ def setup_connection(queue_hostname, confirm_publish=True):
 
 
 # RabbitMQ channel.
-def setup_channel(exchange=None, connection=None):
+def setup_channel(queue_hostname, exchange=None, connection=None):
     """ Get a channel and bind exchange to it. """
 
     assert exchange is not None
     logger.info("exchange: {}".format(exchange))
 
-    channel = setup_connection().channel() if connection is None else connection.channel
+    channel = setup_connection(queue_hostname).channel() if connection is None else connection.channel
 
     # Bind/Declare exchange on broker if necessary.
     exchange.maybe_bind(channel)
@@ -144,9 +144,9 @@ def setup_channel(exchange=None, connection=None):
 
 
 # Get Producer, for 'outgoing' exchange and JSON "serializer" by default.
-def setup_producer(exchange=outgoing_exchange, queue_name=OUTGOING_QUEUE, serializer='json'):
+def setup_producer(queue_hostname, exchange=outgoing_exchange, queue_name=OUTGOING_QUEUE, serializer='json'):
 
-    channel = setup_channel(exchange=exchange)
+    channel = setup_channel(queue_hostname, exchange=exchange)
 
     # Make sure that outgoing queue exists!
     setup_queue(channel, name=queue_name, exchange=exchange)
@@ -163,10 +163,10 @@ def setup_producer(exchange=outgoing_exchange, queue_name=OUTGOING_QUEUE, serial
 
 
 # Consumer, for 'incoming' queue by default.
-def setup_consumer(exchange=incoming_exchange, queue_name=INCOMING_QUEUE, callback=None):
+def setup_consumer(queue_hostname, exchange=incoming_exchange, queue_name=INCOMING_QUEUE, callback=None):
     """ Create consumer with single queue and callback """
 
-    channel = setup_channel(exchange=exchange)
+    channel = setup_channel(queue_hostname, exchange=exchange)
     logger.info("queue_name: {}".format(queue_name))
 
     # A consumer needs a queue, so create one (if necessary).
@@ -245,10 +245,12 @@ def run():
 
 
     # Producer for outgoing exchange.
-    producer = setup_producer()
+    producer_host = app.config['OUTGOING_QUEUE_HOSTNAME']
+    producer = setup_producer(producer_host)
 
     # Create consumer with incoming exchange/queue.
-    consumer = setup_consumer(callback=process_message)
+    consumer_host = app.config['INCOMING_QUEUE_HOSTNAME']
+    consumer = setup_consumer(consumer_host, callback=process_message)
     consumer.consume()
 
     # Loop "forever", as a service.

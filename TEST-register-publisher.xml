@@ -1,18 +1,1 @@
-<?xml version="1.0" encoding="utf-8"?><testsuite errors="1" failures="0" name="pytest" skips="0" tests="0" time="0.403"><testcase classname="" name="tests.test_app" time="0"><error message="collection failure">/usr/lib/python2.7/site-packages/_pytest/python.py:463: in _importtestmodule
-    mod = self.fspath.pyimport(ensuresyspath=True)
-/usr/lib/python2.7/site-packages/py/_path/local.py:641: in pyimport
-    __import__(modname)
-/usr/lib/python2.7/site-packages/_pytest/assertion/rewrite.py:159: in load_module
-    py.builtin.exec_(co, mod.__dict__)
-tests/test_app.py:6: in &lt;module&gt;
-    from application import server
-application/server.py:31: in &lt;module&gt;
-    app.config.from_object(os.getenv(&apos;SETTINGS&apos;, &quot;config.DevelopmentConfig&quot;))
-/usr/lib/python2.7/site-packages/flask/config.py:162: in from_object
-    obj = import_string(obj)
-/usr/lib/python2.7/site-packages/werkzeug/utils.py:414: in import_string
-    return getattr(__import__(module, None, None, [obj]), obj)
-E     File &quot;/home/vagrant/srv/register-publisher/config.py&quot;, line 11
-E       &lt;&lt;&lt;&lt;&lt;&lt;&lt; HEAD
-E        ^
-E   SyntaxError: invalid syntax</error></testcase></testsuite>
+<?xml version="1.0" encoding="utf-8"?><testsuite errors="0" failures="0" name="pytest" skips="0" tests="6" time="21.194"><testcase classname="tests.test_app.TestRegisterPublisher" name="test_broken_connection" time="0.18961620330810547"/><testcase classname="tests.test_app.TestRegisterPublisher" name="test_end_to_end" time="1.1906402111053467"/><testcase classname="tests.test_app.TestRegisterPublisher" name="test_incoming_queue" time="0.14982318878173828"/><testcase classname="tests.test_app.TestRegisterPublisher" name="test_multiple_end_to_end" time="13.942986488342285"/><testcase classname="tests.test_app.TestRegisterPublisher" name="test_stored_incoming_message" time="0.2057807445526123"/><testcase classname="tests.test_app.TestRegisterPublisher" name="test_stored_outgoing_message" time="5.170481204986572"/></testsuite>

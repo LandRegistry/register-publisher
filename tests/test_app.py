@@ -54,8 +54,7 @@ class TestRegisterPublisher(unittest.TestCase):
 
     def consume(self, exchange=server.incoming_exchange, queue_name=server.INCOMING_QUEUE):
         """ Get message via callback mechanism """
-
-        with server.setup_consumer(exchange=exchange, queue_name=queue_name, callback=self.handle_message) as consumer:
+        with server.setup_consumer(server.INCOMING_QUEUE_HOSTNAME, exchange=exchange, queue_name=queue_name, callback=self.handle_message) as consumer:
 
             # 'consume' may be a misnomer here - it just initiates the consumption process, I believe.
             consumer.consume()
@@ -71,24 +70,26 @@ class TestRegisterPublisher(unittest.TestCase):
 
     def reset(self):
 
-        """ Clear the decks. """
+            # """ Clear the decks. """
 
-    logger.debug("reset")
+        logger.debug("reset")
 
-    with server.setup_connection(server.INCOMING_QUEUE_HOSTNAME) as connection:
+        logger.info(server.INCOMING_QUEUE_HOSTNAME)
 
-        # Need a connection to delete the queues.
-        self.assertEqual(connection.connected, True)
+        with server.setup_connection(server.INCOMING_QUEUE_HOSTNAME) as connection:
 
-        queue = server.setup_queue(connection, name=server.INCOMING_QUEUE, exchange=server.incoming_exchange)
-        queue.purge()
-        queue.delete()
+            # Need a connection to delete the queues.
+            self.assertEqual(connection.connected, True)
 
-    with server.server.setup_connection(server.OUTGOING_QUEUE_HOSTNAME) as connection:
+            queue = server.setup_queue(connection, name=server.INCOMING_QUEUE, exchange=server.incoming_exchange)
+            queue.purge()
+            queue.delete()
 
-        queue = server.setup_queue(connection, name=server.OUTGOING_QUEUE, exchange=server.outgoing_exchange)
-        queue.purge()
-        queue.delete()
+        with server.setup_connection(server.OUTGOING_QUEUE_HOSTNAME) as connection:
+
+            queue = server.setup_queue(connection, name=server.OUTGOING_QUEUE, exchange=server.outgoing_exchange)
+            queue.purge()
+            queue.delete()
 
 
     def setUp(self):
@@ -127,7 +128,7 @@ class TestRegisterPublisher(unittest.TestCase):
 
         self.message = make_message()
 
-        producer = server.setup_producer(exchange=server.incoming_exchange, queue_name=server.INCOMING_QUEUE)
+        producer = server.setup_producer(server.OUTGOING_QUEUE_HOSTNAME, exchange=server.incoming_exchange, queue_name=server.INCOMING_QUEUE)
         producer.publish(body=self.message)
         logger.info("Put message, exchange: {}, {}".format(self.message, producer.exchange))
 
@@ -143,7 +144,7 @@ class TestRegisterPublisher(unittest.TestCase):
         self.message = make_message()
 
         # Send a message to 'incoming' exchange - i.e. as if from SoR.
-        with server.setup_producer(exchange=server.incoming_exchange, queue_name=server.INCOMING_QUEUE) as producer:
+        with server.setup_producer(server.OUTGOING_QUEUE_HOSTNAME ,exchange=server.incoming_exchange, queue_name=server.INCOMING_QUEUE) as producer:
 
             producer.publish(body=self.message)
 
@@ -166,7 +167,7 @@ class TestRegisterPublisher(unittest.TestCase):
         self.message = make_message()
 
         # Send a message to 'incoming' exchange - i.e. as if from SoR.
-        with server.setup_producer(exchange=server.incoming_exchange, queue_name=server.INCOMING_QUEUE) as producer:
+        with server.setup_producer(server.OUTGOING_QUEUE_HOSTNAME, exchange=server.incoming_exchange, queue_name=server.INCOMING_QUEUE) as producer:
             producer.publish(body=self.message)
             logger.debug(self.message)
 
@@ -183,7 +184,7 @@ class TestRegisterPublisher(unittest.TestCase):
         self.message = make_message()
 
         # Send a message to 'incoming' exchange - i.e. as if from SoR.
-        with server.setup_producer(exchange=server.incoming_exchange, queue_name=server.INCOMING_QUEUE) as producer:
+        with server.setup_producer(server.OUTGOING_QUEUE_HOSTNAME, exchange=server.incoming_exchange, queue_name=server.INCOMING_QUEUE) as producer:
             producer.publish(body=self.message)
             logger.debug(self.message)
 
@@ -201,7 +202,7 @@ class TestRegisterPublisher(unittest.TestCase):
         """ Send message from dummy "System Of Record", then consume and check it. """
 
         # Send a message to 'incoming' exchange - i.e. as if from SoR.
-        with server.setup_producer(exchange=server.incoming_exchange, queue_name=server.INCOMING_QUEUE) as producer:
+        with server.setup_producer(server.OUTGOING_QUEUE_HOSTNAME, exchange=server.incoming_exchange, queue_name=server.INCOMING_QUEUE) as producer:
             for n in range(count):
 
                 # Message to be sent.
