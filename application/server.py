@@ -1,5 +1,6 @@
 #!/bin/python
 import os
+import sys
 import logging
 import logging.handlers
 import stopit
@@ -21,111 +22,172 @@ Register-Publisher: forwards messages from the System of Record to the outside w
 See http://www.rabbitmq.com/blog/2010/10/19/exchange-to-exchange-bindings for an alternative arrangement, which may be
 unique to RabbitMQ. This might avoid the unpack/pack issue of 'process_message()' but it does not permit logging etc.
 More importantly perhaps, this package acts as a proxy publisher for the System of Record - i.e. security/isolation.
+
+
 """
 
 # Flask is invoked here purely to get the configuration values in a consistent manner!
 app = Flask(__name__)
-app.config.from_object(os.environ.get('SETTINGS'))
+app.config.from_object(os.getenv('SETTINGS', "config.DevelopmentConfig"))
 
 # Routing key is same as queue name in "default direct exchange" case; exchange name is blank.
 INCOMING_QUEUE = app.config['INCOMING_QUEUE']
 OUTGOING_QUEUE = app.config['OUTGOING_QUEUE']
+
+# Relevant Exchange default values:
+#   delivery_mode: '2' (persistent messages)
+#   durable: True (exchange remains 'active' on server re-start)
+
 INCOMING_QUEUE_HOSTNAME = app.config['INCOMING_QUEUE_HOSTNAME']
 OUTGOING_QUEUE_HOSTNAME = app.config['OUTGOING_QUEUE_HOSTNAME']
-incoming_exchange = kombu.Exchange(type="direct", durable=True)
+incoming_exchange = kombu.Exchange(type="direct")
 outgoing_exchange = kombu.Exchange(type="fanout")
 
-# Set up root logger
+# Constraints, etc.
+MAX_RETRIES = app.config['MAX_RETRIES']
+
+
+# Logger-independent output to 'stderr'.
+# def echo(message):
+#     print('\n' + message, file=sys.stderr)
+
+# Set up logger
 def setup_logger(name=__name__):
 
-    ll = app.config['LOG_LEVEL']
+    # Specify base logging threshold level.
+    ll = app.config['LOG_THRESHOLD_LEVEL']
     logger = logging.getLogger(name)
     logger.setLevel(ll)
-    formatter = logging.Formatter("%(asctime)s %(filename)-12.12s#%(lineno)-5.5s %(funcName)-20.20s %(message)s")
 
-    # Add 'rotating' file handler.
+    # Formatter for log records.
+    FORMAT = "%(asctime)s %(filename)-12.12s#%(lineno)-5.5s %(funcName)-20.20s %(message)s"
+    formatter = logging.Formatter(FORMAT)
+
+    # Add 'timed rotating' file handler, for DEBUG-level messages or above.
+    # WARNING: do not use RotatingFileHandler, as this may result in a "ResourceWarning: unclosed file" fault!
     filename = "{}.log".format(name)
-    handler = logging.handlers.RotatingFileHandler(filename, maxBytes=(1048576*5), backupCount=7)
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
+    file_handler = logging.handlers.TimedRotatingFileHandler(filename, when='D')
+    file_handler.setFormatter(formatter)
+    file_handler.setLevel(logging.DEBUG)
+    logger.addHandler(file_handler)
 
     # Add 'console' handler, for errors only.
-    handler = logging.StreamHandler()
-    handler.setFormatter(formatter)
-    handler.setLevel(logging.ERROR)
-    logger.addHandler(handler)
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(formatter)
+    stream_handler.setLevel(logging.ERROR)
+    logger.addHandler(stream_handler)
 
     return logger
 
-logger = setup_logger()
+logger = setup_logger('Register-Publisher')
 
-# RabbitMQ connection/channel; default user/password.
-def setup_connection(queue_hostname, exchange=None):
-    """ Attempt connection, with timeout. """
+log_threshold_level_name = logging.getLevelName(logger.getEffectiveLevel())
+#echo("LOG_THRESHOLD_LEVEL = {}".format(log_threshold_level_name))
 
-    # Attempt connection in a separate thread, as (implied) 'connect' call hangs if permissions not set etc.
+
+# RabbitMQ connection; default user/password.
+def setup_connection(queue_hostname, confirm_publish=True):
+    """ Attempt connection, with timeout.
+
+    'confirm_publish' refers to the "Confirmation Model", with the broker as client to a publisher.
+
+    This can be for asynchronous operation, in which case channel.confirm_select() is called,
+    or for synchronous operation, which employs channel.basic_publish() in a blocking way; note
+    that this call is invoked via the Producer.publish() method, rather than being invoked directly.
+
+    Asynchronous mode does not seem to be well-supported however and the blocking approach is simpler,
+    so we will adopt that even though the performance may suffer.
+
+    See the "2013-09-04 02:39 P.M UTC" entry of http://amqp.readthedocs.org/en/latest/changelog.html for details.
+
+    """
+
+    # Run-time checks.
+    assert type(confirm_publish) is bool
+
+    logger.debug("confirm_publish: {}".format(confirm_publish))
+
+    # Attempt connection in a separate thread, as (implied) 'connect' call may hang if permissions not set etc.
     with stopit.ThreadingTimeout(10) as to_ctx_mgr:
         assert to_ctx_mgr.state == to_ctx_mgr.EXECUTING
 
-        connection = kombu.Connection(hostname=queue_hostname)
+        connection = kombu.Connection(hostname=queue_hostname, transport_options={'confirm_publish': confirm_publish})
         app.logger.info(queue_hostname)
+
         connection.connect()
 
     if to_ctx_mgr.state == to_ctx_mgr.TIMED_OUT:
         err_msg = "Connection unavailable: {}".format(queue_hostname)
         raise RuntimeError(err_msg)
 
-
     logger.info("URI: {}".format(connection.as_uri()))
-
-    # Bind/Declare exchange on broker if necessary.
-    if exchange is not None:
-        exchange.maybe_bind(connection)
-        maybe_declare(exchange, connection)
 
     return connection
 
 
-# Producer, for 'outgoing' exchange by default.
-def setup_producer(connection=None, exchange=outgoing_exchange, serializer='json'):
+# RabbitMQ channel.
+def setup_channel(queue_hostname, exchange=None, connection=None):
+    """ Get a channel and bind exchange to it. """
 
-    channel = setup_connection(app.config['OUTGOING_QUEUE_HOSTNAME'], exchange) if connection is None else connection
-    logger.info("channel: {}".format(channel))
+    assert exchange is not None
     logger.info("exchange: {}".format(exchange))
 
-    queue = setup_queue(channel, name=OUTGOING_QUEUE, exchange=exchange)
+    channel = setup_connection(queue_hostname).channel() if connection is None else connection.channel
 
-    producer = kombu.Producer(channel, exchange=exchange, serializer=serializer)
+    # Bind/Declare exchange on broker if necessary.
+    exchange.maybe_bind(channel)
+    maybe_declare(exchange, channel)
+
+    logger.debug('channel_id: {}'.format(channel.channel_id))
+
+    return channel
+
+
+# Get Producer, for 'outgoing' exchange and JSON "serializer" by default.
+def setup_producer(queue_hostname, exchange=outgoing_exchange, queue_name=OUTGOING_QUEUE, serializer='json'):
+
+    channel = setup_channel(queue_hostname, exchange=exchange)
+
+    # Make sure that outgoing queue exists!
+    setup_queue(channel, name=queue_name, exchange=exchange)
+
+    # Publish message to given queue.
+    producer = kombu.Producer(channel, exchange=exchange, routing_key=queue_name, serializer=serializer)
+
+    logger.debug('channel_id: {}'.format(producer.channel.channel_id))
+    logger.debug('exchange: {}'.format(producer.exchange.name))
+    logger.debug('routing_key: {}'.format(producer.routing_key))
+    logger.debug('serializer: {}'.format(producer.serializer))
 
     return producer
 
 
 # Consumer, for 'incoming' queue by default.
-def setup_consumer(connection=None, exchange=incoming_exchange, queue_name=INCOMING_QUEUE, callback=None):
+def setup_consumer(queue_hostname, exchange=incoming_exchange, queue_name=INCOMING_QUEUE, callback=None):
     """ Create consumer with single queue and callback """
 
-    channel = setup_connection(app.config['INCOMING_QUEUE_HOSTNAME'] ,exchange) if connection is None else connection
-    logger.info("channel: {}".format(channel))
-    logger.info("exchange: {}".format(exchange))
-    logger.info("queue: {}".format(queue_name))
+    channel = setup_channel(queue_hostname, exchange=exchange)
+    logger.info("queue_name: {}".format(queue_name))
 
     # A consumer needs a queue, so create one (if necessary).
     queue = setup_queue(channel, name=queue_name, exchange=exchange)
-    logger.info("queue: {}".format(queue.name))
 
     consumer = kombu.Consumer(channel, queues=queue, callbacks=[callback], accept=['json'])
+
+    logger.debug('channel_id: {}'.format(consumer.channel.channel_id))
+    logger.debug('queue(s): {}'.format(consumer.queues))
 
     return consumer
 
 
-def setup_queue(channel, name=None, exchange=incoming_exchange, key=None):
-    """ Return bound queue """
+def setup_queue(channel, name=None, exchange=incoming_exchange, key=None, durable=True):
+    """ Return bound queue, "durable" by default """
 
     if name is None or exchange is None:
         raise RuntimeError("setup_queue: queue/exchange name required!")
 
     routing_key = name if key is None else key
-    queue = kombu.Queue(name=name, exchange=exchange, routing_key=routing_key)
+    queue = kombu.Queue(name=name, exchange=exchange, routing_key=routing_key, durable=durable)
     queue.maybe_bind(channel)
 
     # VIP: ensure that queue is declared! If it isn't, we can send message to queue but they die, silently :-(
@@ -136,32 +198,59 @@ def setup_queue(channel, name=None, exchange=incoming_exchange, key=None):
     except AccessRefused:
         pass
 
-    logger.info("queue name, exchange, key: {}, {}, {}".format(name, exchange, routing_key))
+    logger.info("queue name, exchange, routing_key: {}, {}, {}".format(queue.name, exchange, routing_key))
 
     return queue
 
 
 def run():
+    """ "System of Record" to "Feeder" re-publisher. """
 
-    # Producer for outgoing (default) exchange.
-    producer = setup_producer()
+    def errback(exc, interval):
+            """ Callback for use with 'ensure/autoretry'. """
 
-    # This is used to consume messages from the "System of Record", then forward them to the outside world.
-    # @TO DO: This may unpack incoming messages, then pack them again when forwarding; consider 'on_message()' instead.
-    # ['body' is decoded content, 'message' is the packet as a whole].
+            logger.error('Error: {}'.format(exc))
+            logger.info('Retry in {} seconds.'.format(interval))
+
+    def ensure(connection, instance, method, *args, **kwargs):
+        """ Retries 'method' if it raises connection or channel error.
+
+            Error is re-raised if 'max_retries' exceeded.
+
+        """
+        _method = getattr(instance, method)
+        _wrapper = connection.ensure(instance, _method, errback=errback, max_retries=MAX_RETRIES)
+
+        _wrapper(*args, **kwargs)
+
+    # Handler (callback) for consumer.
     def process_message(body, message):
-        ''' Forward messages from the 'System of Record' to the outside world '''
+        """ Forward messages from the 'System of Record' to the outside world
+
+        'body' is decoded content, 'message' is the packet as a whole.
+
+        N.B.:
+          This will unpack incoming messages, then pack them again when forwarding.
+          'on_message()' doesn't really help, because publish() requires a message body.
+
+        """
 
         logger.info("RECEIVED MSG - delivery_info: {}".format(message.delivery_info))
 
-        # Forward message to outgoing exchange.
-        producer.publish(body=body, routing_key=OUTGOING_QUEUE)
+        # Forward message to outgoing exchange, with retry management.
+        ensure(producer.connection, producer, 'publish', body)
 
-        # Acknowledge message only after publish(); if that fails. message is still in queue.
+        # Acknowledge message only after publish(); if that fails, message is still in queue.
         message.ack()
 
-    # Create consumer with default exchange/queue.
-    consumer = setup_consumer(callback=process_message)
+
+    # Producer for outgoing exchange.
+    producer_host = app.config['OUTGOING_QUEUE_HOSTNAME']
+    producer = setup_producer(producer_host)
+
+    # Create consumer with incoming exchange/queue.
+    consumer_host = app.config['INCOMING_QUEUE_HOSTNAME']
+    consumer = setup_consumer(consumer_host, callback=process_message)
     consumer.consume()
 
     # Loop "forever", as a service.
@@ -169,7 +258,8 @@ def run():
     while True:
         try:
             # "Wait for a single event from the server".
-            consumer.connection.drain_events()
+            # consumer.connection.drain_events()
+            ensure(consumer.connection, consumer.connection, 'drain_events')
 
         # Permit an explicit abort.
         except KeyboardInterrupt:
@@ -177,14 +267,15 @@ def run():
             break
         # Trap (log) everything else.
         except Exception as e:
-            logger.error(e)
+            err_line_no = sys.exc_info()[2].tb_lineno
+            logger.error("{}: {}".format(err_line_no, str(e)))
 
             # If we ignore the problem, perhaps it will go away ...
             time.sleep(10)
 
     # Graceful degradation.
     producer.close()
-    consumer.cancel()
+    consumer.close()
 
 
 if __name__ == "__main__":

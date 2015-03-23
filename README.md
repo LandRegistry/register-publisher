@@ -14,7 +14,26 @@ See the [wiki](https://github.com/LandRegistry/register-publisher/wiki) for desi
 ##Dependencies:
 
 - See 'requirements.txt'; in particular, additions for 'kombu' and 'stopit'.
-- An AMQP broker is required, typically "RabbitMQ".
+- "RabbitMQ", an AMQP broker.
+-  A suitable non-guest account for the above, when using more than one machine (even a virtual one).
+
+##environment
+
+This application refers to the following environment variables:
+
+
+|Name                | Default 'Config' Value                     |Mandatory?|
+| ------------- |-------------| -----|
+|SETTINGS            |"config.DevelopmentConfig"                  |YES|
+|LOG_THRESHOLD_LEVEL |ERROR                                       |NO|
+|RP_HOSTNAME         |"amqp://guest:guest@localhost:5672//"       |NO|
+|INCOMING_QUEUE      |"INCOMING_QUEUE"                            |NO|
+|OUTGOING_QUEUE      |"OUTGOING_QUEUE"                            |NO|
+
+
+N.B.:  
+Even though some of the environment variables are not required, the corresponding 'config' values _will_ be set.  
+In particular, the default 'RP_HOSTNAME' value is for development purposes only and the e.v. should be set as appropriate.
 
 ##Prerequisites
 

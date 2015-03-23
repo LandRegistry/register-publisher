@@ -1,33 +1,46 @@
 #!/bin/python
-import os
 import json
 import unittest
-import time
 import datetime
-import stopit
 from multiprocessing import Process
 from application import server
-from flask import Flask
 
 """
 Test Register-Publisher on an 'ad hoc' basis or automatically (pytest).
 Pretend to be "System Of Record" publisher.
 """
 
-# Flask is used here purely for configuration purposes.
-app = Flask(__name__)
-app.config.from_object(os.environ.get('SETTINGS'))
-
 # Set up root logger
-ll = app.config['LOG_LEVEL']
-logger = server.setup_logger(__name__)
+logger = server.logger
 
 # Basic test data.
 def make_message():
     dt = str(datetime.datetime.now())
     return json.dumps(dt.split())
 
+class Application(object):
+    """ Mimic Process calls, for logging purposes. """
 
+    def __init__(self, target=server.run):
+        self.target = target
+        self.process = None
+        logger.debug("Target:'{}'.".format(self.target))
+
+    def start(self):
+        self.process = Process(target=self.target)
+
+        logger.debug("Starting '{}' as a separate process.".format(self.target))
+        self.process.start()
+
+    def join(self, timeout=None):
+        self.process.join(timeout=timeout)
+        logger.debug("'{}' completed.".format(self.target))
+
+    def terminate(self):
+        self.process.terminate()
+        logger.debug("'{}' terminated.".format(self.target))
+
+# N.B.: these tests may reverse the default 'producer' and 'consumer' targets.
 class TestRegisterPublisher(unittest.TestCase):
     #: This can be the callback applied when a message is received - i.e. "consume()" case.
     def handle_message(self, body, message):
@@ -39,118 +52,177 @@ class TestRegisterPublisher(unittest.TestCase):
 
         self.payload = message.payload
 
-    def setUp(self):
-        """ Establish connection and other resources; prepare """
-
-        with server.setup_connection(server.OUTGOING_QUEUE_HOSTNAME) as outgoing_connection:
-            # Ensure that message broker is alive
-            self.assertEqual(outgoing_connection.connected, True)
-
-            # We also need relevant queues established before publishing to exchange!
-            queue = server.setup_queue(outgoing_connection, name=server.OUTGOING_QUEUE,
-                                       exchange=server.outgoing_exchange)
-            queue.purge()
-
-        with server.setup_connection(server.INCOMING_QUEUE_HOSTNAME) as incoming_connection:
-            # Ensure that message broker is alive
-            self.assertEqual(incoming_connection.connected, True)
-
-            # We also need relevant queues established before publishing to exchange!
-            queue = server.setup_queue(incoming_connection, name=server.INCOMING_QUEUE,
-                                       exchange=server.incoming_exchange)
-            queue.purge()
-
-        # Message to be sent.
-        self.message = make_message()
-
-        # Corresponding 'payload' of message received.
-        self.payload = None
-
-    def tearDown(self):
-        with server.setup_connection(server.INCOMING_QUEUE_HOSTNAME) as incoming_connection:
-            # Need a connection to delete the queues.
-            self.assertEqual(incoming_connection.connected, True)
-
-            queue = server.setup_queue(incoming_connection, name=server.INCOMING_QUEUE,
-                                       exchange=server.incoming_exchange)
-            queue.delete()
-
-        with server.setup_connection(server.OUTGOING_QUEUE_HOSTNAME) as outgoing_connection:
-            # Need a connection to delete the queues.
-            self.assertEqual(outgoing_connection.connected, True)
-
-            queue = server.setup_queue(outgoing_connection, name=server.OUTGOING_QUEUE,
-                                       exchange=server.outgoing_exchange)
-            queue.delete()
-
-
-    def test_incoming_queue(self):
-        """ Basic check of 'incoming' message via default direct exchange """
-
-        exchange = server.incoming_exchange
-        queue_name = server.INCOMING_QUEUE
-
-        with server.setup_connection(server.INCOMING_QUEUE_HOSTNAME) as connection:
-            producer = server.setup_producer(connection, exchange=exchange)
-            producer.publish(body=self.message, routing_key=queue_name)
-            logger.info("Put message, exchange: {}, {}".format(self.message, exchange))
-
-            # Wait a bit - one second should be long enough.
-        time.sleep(1)
-
-        with server.setup_connection(server.INCOMING_QUEUE_HOSTNAME) as connection:
-            consumer = server.setup_consumer(connection, exchange=exchange, queue_name=queue_name)
-            queue = consumer.queues[0]
-            message = queue.get()
-            logger.info("Got message, queue: {}, {}".format(message.body, queue.name))
-
-            queue.delete()
-
-            if message:
-                self.handle_message(message.body, message)
-
-            self.assertEqual(self.message, self.payload)
-
-        # N.B.: this test reverses the default 'producer' and 'consumer' targets.
-
-
-    def test_end_to_end(self):
-        """ Send message from dummy "System Of Record", then consume and check it. """
-
-        # Execute 'run()' as a separate process.
-        server_run = Process(target=server.run)
-        server_run.start()
-
-        # Send a message to 'incoming' exchange - i.e. as if from SoR.
-        exchange = server.incoming_exchange
-        with server.setup_producer(exchange=exchange) as producer:
-            producer.publish(body=self.message, routing_key=server.INCOMING_QUEUE)
-            logger.info(self.message)
-
-            # Wait a bit - one second should be long enough.
-        server_run.join(timeout=1)
-        server_run.terminate()
-
-        # Consume (poll) message from outgoing exchange.
-        exchange = server.outgoing_exchange
-        queue_name = server.OUTGOING_QUEUE
-        callback = self.handle_message
-
-        with server.setup_consumer(exchange=exchange, queue_name=queue_name, callback=callback) as consumer:
+    def consume(self, exchange=server.incoming_exchange, queue_name=server.INCOMING_QUEUE):
+        """ Get message via callback mechanism """
+        with server.setup_consumer(server.INCOMING_QUEUE_HOSTNAME, exchange=exchange, queue_name=queue_name, callback=self.handle_message) as consumer:
 
             # 'consume' may be a misnomer here - it just initiates the consumption process, I believe.
             consumer.consume()
 
             # Execute 'drain_events()' loop in a time-out thread, in case it gets stuck.
-            with stopit.ThreadingTimeout(10) as to_ctx_mgr:
-                assert to_ctx_mgr.state == to_ctx_mgr.EXECUTING
+            logger.info("'drain_events()' with timeout")
+            try:
+                consumer.connection.drain_events(timeout=5)
+            except Exception as e:
+                logger.error(e)
+            finally:
+                consumer.close()
 
-                try:
-                    consumer.connection.drain_events()
-                except Exception as e:
-                    logger.error(e)
+    def reset(self):
 
-            if to_ctx_mgr.state == to_ctx_mgr.TIMED_OUT:
-                logger.error("Message not consumed!")
+            # """ Clear the decks. """
+
+        logger.debug("reset")
+
+        logger.info(server.INCOMING_QUEUE_HOSTNAME)
+
+        with server.setup_connection(server.INCOMING_QUEUE_HOSTNAME) as connection:
+
+            # Need a connection to delete the queues.
+            self.assertEqual(connection.connected, True)
+
+            queue = server.setup_queue(connection, name=server.INCOMING_QUEUE, exchange=server.incoming_exchange)
+            queue.purge()
+            queue.delete()
+
+        with server.setup_connection(server.OUTGOING_QUEUE_HOSTNAME) as connection:
+
+            queue = server.setup_queue(connection, name=server.OUTGOING_QUEUE, exchange=server.outgoing_exchange)
+            queue.purge()
+            queue.delete()
+
+
+    def setUp(self):
+        """ Establish connection and other resources; prepare """
+
+        logger.debug("setUp")
+
+        self.app = Application()
+
+        test_title = self.id().split(sep='.')[-1]
+        logger.info(test_title)
+
+        # Ensure that message broker is alive, etc.
+        self.reset()
+
+        self.message = None             # Message to be sent.
+        self.payload = None             # Corresponding 'payload' of message received.
+
+        # Execute 'server.run()' as a separate process.
+        self.app.start()
+
+    def tearDown(self):
+
+        logger.debug("setUp")
+
+        # N.B.: app needs to be terminated before queues can be deleted!
+        self.app.terminate()
+
+        self.reset()
+
+    def test_incoming_queue(self):
+        """ Basic check of 'incoming' message via default direct exchange """
+
+        # We don't need the app to be running for this test.
+        self.app.terminate()
+
+        self.message = make_message()
+
+        producer = server.setup_producer(server.OUTGOING_QUEUE_HOSTNAME, exchange=server.incoming_exchange, queue_name=server.INCOMING_QUEUE)
+        producer.publish(body=self.message)
+        logger.info("Put message, exchange: {}, {}".format(self.message, producer.exchange))
+
+        producer.close()
+
+        self.consume()
 
         self.assertEqual(self.message, self.payload)
+
+    def test_broken_connection(self):
+        """ Attempt 'publish' via closed connection, which is subsequently restored. """
+
+        self.message = make_message()
+
+        # Send a message to 'incoming' exchange - i.e. as if from SoR.
+        with server.setup_producer(server.OUTGOING_QUEUE_HOSTNAME ,exchange=server.incoming_exchange, queue_name=server.INCOMING_QUEUE) as producer:
+
+            producer.publish(body=self.message)
+
+            # Kill connection to broker.
+            producer.connection.close()
+
+        # Block (wait) until app times out or terminates.
+        # self.app.join(timeout=5)
+
+        # Consume message from outgoing exchange; this will establish another connection.
+        self.consume(exchange=server.outgoing_exchange, queue_name=server.OUTGOING_QUEUE)
+
+        self.assertEqual(self.message, self.payload)
+
+    def test_stored_incoming_message(self):
+        """ Store message in INCOMING queue, then consume later and check it. """
+
+        self.app.terminate()
+
+        self.message = make_message()
+
+        # Send a message to 'incoming' exchange - i.e. as if from SoR.
+        with server.setup_producer(server.OUTGOING_QUEUE_HOSTNAME, exchange=server.incoming_exchange, queue_name=server.INCOMING_QUEUE) as producer:
+            producer.publish(body=self.message)
+            logger.debug(self.message)
+
+        self.app.start()
+
+        # Consume message from outgoing exchange.
+        self.consume(exchange=server.outgoing_exchange, queue_name=server.OUTGOING_QUEUE)
+
+        self.assertEqual(self.message, self.payload)
+
+    def test_stored_outgoing_message(self):
+        """ Store message in OUTGOING queue, then consume later and check it. """
+
+        self.message = make_message()
+
+        # Send a message to 'incoming' exchange - i.e. as if from SoR.
+        with server.setup_producer(server.OUTGOING_QUEUE_HOSTNAME, exchange=server.incoming_exchange, queue_name=server.INCOMING_QUEUE) as producer:
+            producer.publish(body=self.message)
+            logger.debug(self.message)
+
+        # Kill application; wait long enough for message to be stored.
+        # N.B.: 1 second may be insufficient, for a full coverage check during testing.
+        self.app.join(timeout=5)
+        logger.info("'server.run()' completed")
+
+        # Consume message from outgoing exchange.
+        self.consume(exchange=server.outgoing_exchange, queue_name=server.OUTGOING_QUEUE)
+
+        self.assertEqual(self.message, self.payload)
+
+    def test_end_to_end(self, count=1):
+        """ Send message from dummy "System Of Record", then consume and check it. """
+
+        # Send a message to 'incoming' exchange - i.e. as if from SoR.
+        with server.setup_producer(server.OUTGOING_QUEUE_HOSTNAME, exchange=server.incoming_exchange, queue_name=server.INCOMING_QUEUE) as producer:
+            for n in range(count):
+
+                # Message to be sent.
+                self.message = make_message()
+
+                producer.publish(body=self.message)
+                logger.debug(self.message)
+
+                # Consume message from outgoing exchange, via callback.
+                self.consume(exchange=server.outgoing_exchange, queue_name=server.OUTGOING_QUEUE)
+
+                self.assertEqual(self.message, self.payload)
+
+        # Wait long enough for all messages to be processed.
+        self.app.join(timeout=(count // 10) + 1)
+
+    def test_multiple_end_to_end(self):
+        """ Check many messages. """
+
+        self.test_end_to_end(100)
+
+if __name__ == '__main__':
+    unittest.main()
