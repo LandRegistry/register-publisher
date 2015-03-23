@@ -8,7 +8,6 @@ class Config(object):
 
     # Flask DEBUG setting - not used.
     DEBUG = False
-<<<<<<< HEAD
 
     # Logging.
     LOG_THRESHOLD_LEVEL = os.getenv('LOG_THRESHOLD_LEVEL', 'ERROR')                 # Base threshold logging level.
