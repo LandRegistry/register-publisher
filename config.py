@@ -1,4 +1,4 @@
-#!/bin/python
+    #!/bin/python
 
 import os
 
@@ -8,6 +8,7 @@ class Config(object):
 
     # Flask DEBUG setting - not used.
     DEBUG = False
+<<<<<<< HEAD
 
     # Logging.
     LOG_THRESHOLD_LEVEL = os.getenv('LOG_THRESHOLD_LEVEL', 'ERROR')                 # Base threshold logging level.
@@ -17,6 +18,7 @@ class Config(object):
 
     INCOMING_QUEUE_HOSTNAME = os.getenv('INCOMING_QUEUE_HOSTNAME', "amqp://mqpublisher:mqpublisherpassword@localhost:5672/")   # RabbitMQ IP address
     OUTGOING_QUEUE_HOSTNAME = os.getenv('OUTGOING_QUEUE_HOSTNAME', "amqp://mqpublisher:mqpublisherpassword@localhost:5672/")   # RabbitMQ IP address
+
     INCOMING_QUEUE = os.getenv('INCOMING_QUEUE', 'system_of_record')                  # SOR to RP queue name
     OUTGOING_QUEUE = os.getenv('OUTGOING_QUEUE', 'register_publisher')                  # Default outgoing queue name
     
