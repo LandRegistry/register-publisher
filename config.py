@@ -12,14 +12,14 @@ class Config(object):
     # Logging.
     LOG_THRESHOLD_LEVEL = os.getenv('LOG_THRESHOLD_LEVEL', 'ERROR')                 # Base threshold logging level.
 
-    # AMQP.
-    RP_HOSTNAME = os.getenv('RP_HOSTNAME', "amqp://guest:guest@localhost:5672//")   # RabbitMQ IP address
-    INCOMING_QUEUE = os.getenv('INCOMING_QUEUE', 'INCOMING_QUEUE')                  # SOR to RP queue name
-    OUTGOING_QUEUE = os.getenv('OUTGOING_QUEUE', 'OUTGOING_QUEUE')                  # Default outgoing queue name
-
     # Kombu.
     MAX_RETRIES = os.getenv('MAX_RETRIES', 10)                                      # # Maximum 'ensure' limit.
 
+    INCOMING_QUEUE_HOSTNAME = os.getenv('INCOMING_QUEUE_HOSTNAME', "amqp://mqpublisher:mqpublisherpassword@localhost:5672/")   # RabbitMQ IP address
+    OUTGOING_QUEUE_HOSTNAME = os.getenv('OUTGOING_QUEUE_HOSTNAME', "amqp://mqpublisher:mqpublisherpassword@localhost:5672/")   # RabbitMQ IP address
+    INCOMING_QUEUE = os.getenv('INCOMING_QUEUE', 'system_of_record')                  # SOR to RP queue name
+    OUTGOING_QUEUE = os.getenv('OUTGOING_QUEUE', 'register_publisher')                  # Default outgoing queue name
+    
 class DevelopmentConfig(Config):
     LOG_THRESHOLD_LEVEL = os.getenv('LOG_THRESHOLD_LEVEL', 'DEBUG')
 

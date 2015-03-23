@@ -15,7 +15,7 @@ logger = server.logger
 
 # Basic test data.
 def make_message():
-    dt=str(datetime.datetime.now())
+    dt = str(datetime.datetime.now())
     return json.dumps(dt.split())
 
 class Application(object):
@@ -42,7 +42,6 @@ class Application(object):
 
 # N.B.: these tests may reverse the default 'producer' and 'consumer' targets.
 class TestRegisterPublisher(unittest.TestCase):
-
     #: This can be the callback applied when a message is received - i.e. "consume()" case.
     def handle_message(self, body, message):
         # Note: 'body' may have been pickled, so refer to 'payload' instead.
@@ -71,22 +70,26 @@ class TestRegisterPublisher(unittest.TestCase):
                 consumer.close()
 
     def reset(self):
+
         """ Clear the decks. """
 
-        logger.debug("reset")
+    logger.debug("reset")
 
-        with server.setup_connection() as connection:
+    with server.setup_connection(server.INCOMING_QUEUE_HOSTNAME) as connection:
 
-            # Need a connection to delete the queues.
-            self.assertEqual(connection.connected, True)
+        # Need a connection to delete the queues.
+        self.assertEqual(connection.connected, True)
 
-            queue = server.setup_queue(connection, name=server.INCOMING_QUEUE, exchange=server.incoming_exchange)
-            queue.purge()
-            queue.delete()
+        queue = server.setup_queue(connection, name=server.INCOMING_QUEUE, exchange=server.incoming_exchange)
+        queue.purge()
+        queue.delete()
 
-            queue = server.setup_queue(connection, name=server.OUTGOING_QUEUE, exchange=server.outgoing_exchange)
-            queue.purge()
-            queue.delete()
+    with server.server.setup_connection(server.OUTGOING_QUEUE_HOSTNAME) as connection:
+
+        queue = server.setup_queue(connection, name=server.OUTGOING_QUEUE, exchange=server.outgoing_exchange)
+        queue.purge()
+        queue.delete()
+
 
     def setUp(self):
         """ Establish connection and other resources; prepare """

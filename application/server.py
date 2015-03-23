@@ -33,11 +33,13 @@ app.config.from_object(os.getenv('SETTINGS', "config.DevelopmentConfig"))
 # Routing key is same as queue name in "default direct exchange" case; exchange name is blank.
 INCOMING_QUEUE = app.config['INCOMING_QUEUE']
 OUTGOING_QUEUE = app.config['OUTGOING_QUEUE']
-RP_HOSTNAME = app.config['RP_HOSTNAME']
 
 # Relevant Exchange default values:
 #   delivery_mode: '2' (persistent messages)
 #   durable: True (exchange remains 'active' on server re-start)
+
+INCOMING_QUEUE_HOSTNAME = app.config['INCOMING_QUEUE_HOSTNAME']
+OUTGOING_QUEUE_HOSTNAME = app.config['OUTGOING_QUEUE_HOSTNAME']
 incoming_exchange = kombu.Exchange(type="direct")
 outgoing_exchange = kombu.Exchange(type="fanout")
 
@@ -46,8 +48,8 @@ MAX_RETRIES = app.config['MAX_RETRIES']
 
 
 # Logger-independent output to 'stderr'.
-def echo(message):
-    print('\n' + message, file=sys.stderr)
+# def echo(message):
+#     print('\n' + message, file=sys.stderr)
 
 # Set up logger
 def setup_logger(name=__name__):
@@ -80,11 +82,11 @@ def setup_logger(name=__name__):
 logger = setup_logger('Register-Publisher')
 
 log_threshold_level_name = logging.getLevelName(logger.getEffectiveLevel())
-echo("LOG_THRESHOLD_LEVEL = {}".format(log_threshold_level_name))
+#echo("LOG_THRESHOLD_LEVEL = {}".format(log_threshold_level_name))
 
 
 # RabbitMQ connection; default user/password.
-def setup_connection(hostname=RP_HOSTNAME, confirm_publish=True):
+def setup_connection(queue_hostname, confirm_publish=True):
     """ Attempt connection, with timeout.
 
     'confirm_publish' refers to the "Confirmation Model", with the broker as client to a publisher.
@@ -109,12 +111,13 @@ def setup_connection(hostname=RP_HOSTNAME, confirm_publish=True):
     with stopit.ThreadingTimeout(10) as to_ctx_mgr:
         assert to_ctx_mgr.state == to_ctx_mgr.EXECUTING
 
-        connection = kombu.Connection(hostname=hostname, transport_options={'confirm_publish': confirm_publish})
-        app.logger.info(hostname)
+        connection = kombu.Connection(hostname=queue_hostname, transport_options={'confirm_publish': confirm_publish})
+        app.logger.info(queue_hostname)
+
         connection.connect()
 
     if to_ctx_mgr.state == to_ctx_mgr.TIMED_OUT:
-        err_msg = "Connection unavailable: {}".format(RP_HOSTNAME)
+        err_msg = "Connection unavailable: {}".format(queue_hostname)
         raise RuntimeError(err_msg)
 
     logger.info("URI: {}".format(connection.as_uri()))

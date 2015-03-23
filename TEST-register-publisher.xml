@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?><testsuite errors="1" failures="0" name="pytest" skips="0" tests="0" time="3.357"><testcase classname="" name="tests.test_app" time="0"><error message="collection failure">tests/test_app.py:44: in &lt;module&gt;
+    class TestRegisterPublisher(unittest.TestCase):
+tests/test_app.py:78: in TestRegisterPublisher
+    with server.setup_connection(server.INCOMING_QUEUE_HOSTNAME) as connection:
+application/server.py:117: in setup_connection
+    connection.connect()
+/usr/lib/python2.7/site-packages/kombu/connection.py:237: in connect
+    return self.connection
+/usr/lib/python2.7/site-packages/kombu/connection.py:741: in connection
+    self._connection = self._establish_connection()
+/usr/lib/python2.7/site-packages/kombu/connection.py:696: in _establish_connection
+    conn = self.transport.establish_connection()
+/usr/lib/python2.7/site-packages/kombu/transport/pyamqp.py:112: in establish_connection
+    conn = self.Connection(**opts)
+/usr/lib/python2.7/site-packages/amqp/connection.py:180: in __init__
+    (10, 30),  # tune
+/usr/lib/python2.7/site-packages/amqp/abstract_channel.py:67: in wait
+    self.channel_id, allowed_methods)
+/usr/lib/python2.7/site-packages/amqp/connection.py:240: in _wait_method
+    self.method_reader.read_method()
+/usr/lib/python2.7/site-packages/amqp/method_framing.py:189: in read_method
+    raise m
+E   error: [Errno 104] Connection reset by peer</error></testcase></testsuite>
