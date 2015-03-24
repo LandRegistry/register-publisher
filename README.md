@@ -35,6 +35,9 @@ N.B.:
 Even though some of the environment variables are not required, the corresponding 'config' values _will_ be set.  
 In particular, the default 'RP_HOSTNAME' value is for development purposes only and the e.v. should be set as appropriate.
 
+##Prerequisites
+
+* Account with necessary privileges needs to be created; default RabbitMQ 'guest' account is restricted to _localhost_ use only.
 
 ##how to run in development
 

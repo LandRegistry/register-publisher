@@ -42,7 +42,6 @@ class Application(object):
 
 # N.B.: these tests may reverse the default 'producer' and 'consumer' targets.
 class TestRegisterPublisher(unittest.TestCase):
-
     #: This can be the callback applied when a message is received - i.e. "consume()" case.
     def handle_message(self, body, message):
         # Note: 'body' may have been pickled, so refer to 'payload' instead.
@@ -71,7 +70,8 @@ class TestRegisterPublisher(unittest.TestCase):
                 consumer.close()
 
     def reset(self):
-        """ Clear the decks. """
+
+            # """ Clear the decks. """
 
         logger.debug("reset")
 
@@ -157,7 +157,7 @@ class TestRegisterPublisher(unittest.TestCase):
             producer.connection.close()
 
         # Block (wait) until app times out or terminates.
-        # self.app.join(timeout=5)
+        self.app.join(timeout=5)
 
         # Consume message from outgoing exchange; this will establish another connection.
         self.consume(cfg=server.outgoing_cfg)
@@ -196,7 +196,7 @@ class TestRegisterPublisher(unittest.TestCase):
         # Kill application; wait long enough for message to be stored.
         # N.B.: 1 second may be insufficient, for a full coverage check during testing.
         self.app.join(timeout=5)
-        logger.info("'server.run()' completed")
+        self.app.terminate()
 
         # Consume message from outgoing exchange.
         self.consume(cfg=server.outgoing_cfg)

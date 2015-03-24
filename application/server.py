@@ -40,8 +40,8 @@ MAX_RETRIES = app.config['MAX_RETRIES']
 LOG_NAME = "Register-Publisher"
 
 # Logger-independent output to 'stderr'.
-def echo(message):
-    print('\n' + message, file=sys.stderr)
+# def echo(message):
+#     print('\n' + message, file=sys.stderr)
 
 # Set up logger
 def setup_logger(name=__name__):
@@ -59,7 +59,6 @@ def setup_logger(name=__name__):
 logger = setup_logger(LOG_NAME)
 
 log_threshold_level_name = logging.getLevelName(logger.getEffectiveLevel())
-echo("LOG_THRESHOLD_LEVEL = {}".format(log_threshold_level_name))
 
 
 # RabbitMQ connection; default user/password.
@@ -87,8 +86,10 @@ def setup_connection(queue_hostname, confirm_publish=True):
     # Attempt connection in a separate thread, as (implied) 'connect' call may hang if permissions not set etc.
     with stopit.ThreadingTimeout(10) as to_ctx_mgr:
         assert to_ctx_mgr.state == to_ctx_mgr.EXECUTING
+
         connection = kombu.Connection(hostname=queue_hostname, transport_options={'confirm_publish': confirm_publish})
         app.logger.info(queue_hostname)
+
         connection.connect()
 
     if to_ctx_mgr.state == to_ctx_mgr.TIMED_OUT:

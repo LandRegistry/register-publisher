@@ -11,21 +11,37 @@ pip install -r requirements.txt
 #Set environment variable in supervisord according to deploying environment (default to development)
 case "$DEPLOY_ENVIRONMENT" in
   development)
-  SETTINGS="config.DevelopmentConfig"
+  SUPERVISOR_ENV="SETTINGS=\"config.DevelopmentConfig\""
   ;;
-  test)
-  SETTINGS="config.PreviewConfig"
+  preview)
+  SUPERVISOR_ENV="SETTINGS=\"config.PreviewConfig\""
   ;;
   preproduction)
-  SETTINGS="config.PreProductionConfig"
+  SUPERVISOR_ENV="SETTINGS=\"config.PreProductionConfig\""
   ;;
   production)
-  SETTINGS="config.ProductionConfig"
+  SUPERVISOR_ENV="SETTINGS=\"config.ProductionConfig\""
   ;;
   *)
-  SETTINGS="config.DevelopmentConfig"
+  SUPERVISOR_ENV="SETTINGS=\"config.DevelopmentConfig\""
   ;;
 esac
+
+if [ -n "$INCOMING_QUEUE_HOSTNAME" ]; then
+  SUPERVISOR_ENV="$SUPERVISOR_ENV,INCOMING_QUEUE_HOSTNAME=\"$INCOMING_QUEUE_HOSTNAME\""
+fi
+
+if [ -n "$INCOMING_QUEUE" ]; then
+  SUPERVISOR_ENV="$SUPERVISOR_ENV,INCOMING_QUEUE=\"$INCOMING_QUEUE\""
+fi
+
+if [ -n "$OUTGOING_QUEUE_HOSTNAME" ]; then
+  SUPERVISOR_ENV="$SUPERVISOR_ENV,OUTGOING_QUEUE_HOSTNAME=\"$OUTGOING_QUEUE_HOSTNAME\""
+fi
+
+if [ -n "$OUTGOING_QUEUE" ]; then
+  SUPERVISOR_ENV="$SUPERVISOR_ENV,OUTGOING_QUEUE=\"$OUTGOING_QUEUE\""
+fi
 
 echo "Adding register-publisherto supervisord..."
 cat > /etc/supervisord.d/register-publisher.ini << EOF
@@ -35,5 +51,6 @@ directory=$dir
 autostart=true
 autorestart=true
 user=$USER
-environment=SETTINGS="$SETTINGS",INCOMING_QUEUE="system_of_record"
+environment=$SUPERVISOR_ENV
+stopasgroup=true
 EOF
