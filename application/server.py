@@ -6,6 +6,7 @@ import logging.handlers
 import stopit
 import kombu
 import time
+import traceback
 from flask import Flask
 from kombu.common import maybe_declare
 from amqp import AccessRefused
@@ -253,6 +254,7 @@ def run():
         except Exception as e:
             err_line_no = sys.exc_info()[2].tb_lineno
             logger.error("{}: {}".format(err_line_no, str(e)))
+            logger.error(traceback.format_exc())  # logs the call stack
 
             # If we ignore the problem, perhaps it will go away ...
             time.sleep(10)
