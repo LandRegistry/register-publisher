@@ -6,7 +6,6 @@ import logging.handlers
 import stopit
 import kombu
 import time
-import traceback
 from flask import Flask
 from kombu.common import maybe_declare
 from amqp import AccessRefused
