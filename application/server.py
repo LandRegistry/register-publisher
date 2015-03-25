@@ -253,8 +253,7 @@ def run():
         # Trap (log) everything else.
         except Exception as e:
             err_line_no = sys.exc_info()[2].tb_lineno
-            logger.error("{}: {}".format(err_line_no, str(e)))
-            logger.error(traceback.format_exc())  # logs the call stack
+            logger.exception("{}: {}".format(err_line_no, str(e)))
 
             # If we ignore the problem, perhaps it will go away ...
             time.sleep(10)
