@@ -9,7 +9,7 @@ import time
 from flask import Flask
 from kombu.common import maybe_declare
 from amqp import AccessRefused
-from logger.setup_logging import setup_logging
+from python_logging.setup_logging import setup_logging
 
 """
 Register-Publisher: forwards messages from the System of Record to the outside world, via AMQP "broadcast".
