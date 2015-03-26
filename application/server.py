@@ -81,6 +81,7 @@ def setup_connection(queue_hostname, confirm_publish=True):
     # Run-time checks.
     assert type(confirm_publish) is bool
 
+    logger.debug(queue_hostname)
     logger.debug("confirm_publish: {}".format(confirm_publish))
 
     # Attempt connection in a separate thread, as (implied) 'connect' call may hang if permissions not set etc.
@@ -88,7 +89,6 @@ def setup_connection(queue_hostname, confirm_publish=True):
         assert to_ctx_mgr.state == to_ctx_mgr.EXECUTING
 
         connection = kombu.Connection(hostname=queue_hostname, transport_options={'confirm_publish': confirm_publish})
-        app.logger.info(queue_hostname)
 
         connection.connect()
 
