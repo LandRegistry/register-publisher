@@ -29,7 +29,7 @@ More importantly perhaps, this package acts as a proxy publisher for the System 
 
 # Flask is invoked here purely to get the configuration values in a consistent manner!
 app = Flask(__name__)
-app.config.from_object(os.getenv('SETTINGS', "config.ProductionConfig"))
+app.config.from_object(os.getenv('SETTINGS', "config.DevelopmentConfig"))
 
 incoming_cfg = app.config['INCOMING_CFG']
 outgoing_cfg = app.config['OUTGOING_CFG']
