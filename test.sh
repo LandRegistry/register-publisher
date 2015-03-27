@@ -6,4 +6,8 @@ cd $dir
 source ~/venvs/register-publisher/bin/activate
 source ./environment-test.sh
 
+rm -fr logs
+mkdir -p logs
+
 py.test --junitxml=TEST-register-publisher.xml --cov application --cov-report term-missing -v tests "$@"
+
