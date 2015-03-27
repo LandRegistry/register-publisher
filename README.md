@@ -11,7 +11,7 @@ This service will forward messages from the "System of Record" queue to the "fee
 See the [wiki](https://github.com/LandRegistry/register-publisher/wiki) for design notes, etc.
 
 
-##Dependencies:
+##Dependencies
 
 - See 'requirements.txt'; in particular, additions for 'kombu' and 'stopit'.
 - "RabbitMQ", an AMQP broker.
@@ -108,4 +108,3 @@ Activities to be logged:
 * Acknowledges pull
 * Pushes to the Register Publisher queue
 * Acknowledges successful receipt by Register Publisher queue
-

@@ -7,6 +7,8 @@ __pycache__/
 
 .vagrant/
 
+TEST-register-publisher.xml
+
 # C extensions
 *.so
 
@@ -61,5 +63,3 @@ target/
 #intellij
 *.iml
 *.idea
-
-
