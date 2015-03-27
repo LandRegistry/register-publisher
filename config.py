@@ -27,7 +27,7 @@ class Config(object):
     #   delivery_mode: '2' (persistent messages)
     #   durable: True (exchange remains 'active' on server re-start)
     INCOMING_EXCHANGE = kombu.Exchange(type="direct")
-    OUTGOING_EXCHANGE = kombu.Exchange(type="fanout")
+    OUTGOING_EXCHANGE = kombu.Exchange(type="topic")
 
     # Collections
     Configuration = namedtuple("Configuration", ['hostname', 'exchange', 'queue'])

@@ -12,13 +12,13 @@ from amqp import AccessRefused
 from python_logging.setup_logging import setup_logging
 
 """
-Register-Publisher: forwards messages from the System of Record to the outside world, via AMQP "broadcast".
+Register-Publisher: forwards messages from the System of Record to the outside world, via AMQP "topic broadcast".
 
-* AMQP defines four type of exchange, one of which is 'fanout'; that enables clients to subscribe on an 'ad hoc' basis.
+* AMQP defines four type of exchange, one of which is 'topic'; that enables clients to subscribe on an 'ad hoc' basis.
 * RabbitMQ etc. should have default exchanges in place; 'amq.fanout' for example.
 * The "System of Record" (SoR) could publish directly to a fanout exchange and indeed used to do so.
 * A separate "Register-Publisher" (RP) module is required to isolate the SoR from the outside world.
-* Thus the SoR publishes to the RP via a 'direct' exchange, which in turn forwards the messages to a 'fanout' exchange.
+* Thus the SoR publishes to the RP via a 'direct' exchange, which in turn forwards the messages to a 'topic' exchange.
 
 See http://www.rabbitmq.com/blog/2010/10/19/exchange-to-exchange-bindings for an alternative arrangement, which may be
 unique to RabbitMQ. This might avoid the unpack/pack issue of 'process_message()' but it does not permit logging etc.
@@ -38,10 +38,6 @@ outgoing_cfg = app.config['OUTGOING_CFG']
 MAX_RETRIES = app.config['MAX_RETRIES']
 
 LOG_NAME = "Register-Publisher"
-
-# Logger-independent output to 'stderr'.
-# def echo(message):
-#     print('\n' + message, file=sys.stderr)
 
 # Set up logger
 def setup_logger(name=__name__):
