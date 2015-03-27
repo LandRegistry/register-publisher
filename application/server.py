@@ -9,6 +9,7 @@ import time
 from flask import Flask
 from kombu.common import maybe_declare
 from amqp import AccessRefused
+from python_logging.setup_logging import setup_logging
 
 """
 Register-Publisher: forwards messages from the System of Record to the outside world, via AMQP "broadcast".
@@ -30,22 +31,13 @@ More importantly perhaps, this package acts as a proxy publisher for the System 
 app = Flask(__name__)
 app.config.from_object(os.getenv('SETTINGS', "config.DevelopmentConfig"))
 
-# Routing key is same as queue name in "default direct exchange" case; exchange name is blank.
-INCOMING_QUEUE = app.config['INCOMING_QUEUE']
-OUTGOING_QUEUE = app.config['OUTGOING_QUEUE']
-
-# Relevant Exchange default values:
-#   delivery_mode: '2' (persistent messages)
-#   durable: True (exchange remains 'active' on server re-start)
-
-INCOMING_QUEUE_HOSTNAME = app.config['INCOMING_QUEUE_HOSTNAME']
-OUTGOING_QUEUE_HOSTNAME = app.config['OUTGOING_QUEUE_HOSTNAME']
-incoming_exchange = kombu.Exchange(type="direct")
-outgoing_exchange = kombu.Exchange(type="fanout")
+incoming_cfg = app.config['INCOMING_CFG']
+outgoing_cfg = app.config['OUTGOING_CFG']
 
 # Constraints, etc.
 MAX_RETRIES = app.config['MAX_RETRIES']
 
+LOG_NAME = "Register-Publisher"
 
 # Logger-independent output to 'stderr'.
 # def echo(message):
@@ -54,35 +46,19 @@ MAX_RETRIES = app.config['MAX_RETRIES']
 # Set up logger
 def setup_logger(name=__name__):
 
+    # Standard LR configuration.
+    setup_logging()
+
     # Specify base logging threshold level.
     ll = app.config['LOG_THRESHOLD_LEVEL']
     logger = logging.getLogger(name)
     logger.setLevel(ll)
 
-    # Formatter for log records.
-    FORMAT = "%(asctime)s %(filename)-12.12s#%(lineno)-5.5s %(funcName)-20.20s %(message)s"
-    formatter = logging.Formatter(FORMAT)
-
-    # Add 'timed rotating' file handler, for DEBUG-level messages or above.
-    # WARNING: do not use RotatingFileHandler, as this may result in a "ResourceWarning: unclosed file" fault!
-    filename = "{}.log".format(name)
-    file_handler = logging.handlers.TimedRotatingFileHandler(filename, when='D')
-    file_handler.setFormatter(formatter)
-    file_handler.setLevel(logging.DEBUG)
-    logger.addHandler(file_handler)
-
-    # Add 'console' handler, for errors only.
-    stream_handler = logging.StreamHandler()
-    stream_handler.setFormatter(formatter)
-    stream_handler.setLevel(logging.ERROR)
-    logger.addHandler(stream_handler)
-
     return logger
 
-logger = setup_logger('Register-Publisher')
+logger = setup_logger(LOG_NAME)
 
 log_threshold_level_name = logging.getLevelName(logger.getEffectiveLevel())
-#echo("LOG_THRESHOLD_LEVEL = {}".format(log_threshold_level_name))
 
 
 # RabbitMQ connection; default user/password.
@@ -105,6 +81,7 @@ def setup_connection(queue_hostname, confirm_publish=True):
     # Run-time checks.
     assert type(confirm_publish) is bool
 
+    logger.debug(queue_hostname)
     logger.debug("confirm_publish: {}".format(confirm_publish))
 
     # Attempt connection in a separate thread, as (implied) 'connect' call may hang if permissions not set etc.
@@ -112,7 +89,6 @@ def setup_connection(queue_hostname, confirm_publish=True):
         assert to_ctx_mgr.state == to_ctx_mgr.EXECUTING
 
         connection = kombu.Connection(hostname=queue_hostname, transport_options={'confirm_publish': confirm_publish})
-        app.logger.info(queue_hostname)
 
         connection.connect()
 
@@ -132,7 +108,10 @@ def setup_channel(queue_hostname, exchange=None, connection=None):
     assert exchange is not None
     logger.info("exchange: {}".format(exchange))
 
-    channel = setup_connection(queue_hostname).channel() if connection is None else connection.channel
+    if connection is None:
+        channel = setup_connection(queue_hostname).channel()
+    else:
+        channel = connection.channel()
 
     # Bind/Declare exchange on broker if necessary.
     exchange.maybe_bind(channel)
@@ -144,15 +123,15 @@ def setup_channel(queue_hostname, exchange=None, connection=None):
 
 
 # Get Producer, for 'outgoing' exchange and JSON "serializer" by default.
-def setup_producer(queue_hostname, exchange=outgoing_exchange, queue_name=OUTGOING_QUEUE, serializer='json'):
+def setup_producer(cfg=outgoing_cfg, serializer='json'):
 
-    channel = setup_channel(queue_hostname, exchange=exchange)
+    channel = setup_channel(cfg.hostname, exchange=cfg.exchange)
 
     # Make sure that outgoing queue exists!
-    setup_queue(channel, name=queue_name, exchange=exchange)
+    setup_queue(channel, cfg=cfg)
 
     # Publish message to given queue.
-    producer = kombu.Producer(channel, exchange=exchange, routing_key=queue_name, serializer=serializer)
+    producer = kombu.Producer(channel, exchange=cfg.exchange, routing_key=cfg.queue, serializer=serializer)
 
     logger.debug('channel_id: {}'.format(producer.channel.channel_id))
     logger.debug('exchange: {}'.format(producer.exchange.name))
@@ -163,14 +142,14 @@ def setup_producer(queue_hostname, exchange=outgoing_exchange, queue_name=OUTGOI
 
 
 # Consumer, for 'incoming' queue by default.
-def setup_consumer(queue_hostname, exchange=incoming_exchange, queue_name=INCOMING_QUEUE, callback=None):
+def setup_consumer(cfg=incoming_cfg, callback=None):
     """ Create consumer with single queue and callback """
 
-    channel = setup_channel(queue_hostname, exchange=exchange)
-    logger.info("queue_name: {}".format(queue_name))
+    channel = setup_channel(cfg.hostname, cfg.exchange)
+    logger.info("queue_name: {}".format(cfg.queue))
 
     # A consumer needs a queue, so create one (if necessary).
-    queue = setup_queue(channel, name=queue_name, exchange=exchange)
+    queue = setup_queue(channel, cfg=cfg)
 
     consumer = kombu.Consumer(channel, queues=queue, callbacks=[callback], accept=['json'])
 
@@ -180,14 +159,14 @@ def setup_consumer(queue_hostname, exchange=incoming_exchange, queue_name=INCOMI
     return consumer
 
 
-def setup_queue(channel, name=None, exchange=incoming_exchange, key=None, durable=True):
+def setup_queue(channel, cfg=None, key=None, durable=True):
     """ Return bound queue, "durable" by default """
 
-    if name is None or exchange is None:
-        raise RuntimeError("setup_queue: queue/exchange name required!")
+    if cfg is None:
+        raise RuntimeError("setup_queue: configuration 'cfg' required!")
 
-    routing_key = name if key is None else key
-    queue = kombu.Queue(name=name, exchange=exchange, routing_key=routing_key, durable=durable)
+    routing_key = cfg.queue if key is None else key
+    queue = kombu.Queue(name=cfg.queue, exchange=cfg.exchange, routing_key=routing_key, durable=durable)
     queue.maybe_bind(channel)
 
     # VIP: ensure that queue is declared! If it isn't, we can send message to queue but they die, silently :-(
@@ -198,13 +177,16 @@ def setup_queue(channel, name=None, exchange=incoming_exchange, key=None, durabl
     except AccessRefused:
         pass
 
-    logger.info("queue name, exchange, routing_key: {}, {}, {}".format(queue.name, exchange, routing_key))
+    logger.info("queue name, exchange, routing_key: {}, {}, {}".format(queue.name, cfg.exchange, routing_key))
 
     return queue
 
 
+# This is executed as a separate process by unit tests; cannot refer to 'INCOMING_QUEUE' etc. in that case.
 def run():
     """ "System of Record" to "Feeder" re-publisher. """
+
+    logger = setup_logger(LOG_NAME)
 
     def errback(exc, interval):
             """ Callback for use with 'ensure/autoretry'. """
@@ -218,6 +200,7 @@ def run():
             Error is re-raised if 'max_retries' exceeded.
 
         """
+        logger.debug("instance: {}, method: {}".format(instance.__class__, method))
         _method = getattr(instance, method)
         _wrapper = connection.ensure(instance, _method, errback=errback, max_retries=MAX_RETRIES)
 
@@ -235,22 +218,23 @@ def run():
 
         """
 
-        logger.info("RECEIVED MSG - delivery_info: {}".format(message.delivery_info))
+        logger.audit("Pull from incoming queue: {}".format(message.delivery_info))
 
         # Forward message to outgoing exchange, with retry management.
+        logger.audit("Push to outgoing queue: {}".format(message.delivery_info))
         ensure(producer.connection, producer, 'publish', body)
+        logger.audit("Acknowledged Push (implied): {}".format(message.delivery_tag))
 
         # Acknowledge message only after publish(); if that fails, message is still in queue.
         message.ack()
+        logger.audit("Acknowledged Pull: {}".format(message.delivery_tag))
 
 
     # Producer for outgoing exchange.
-    producer_host = app.config['OUTGOING_QUEUE_HOSTNAME']
-    producer = setup_producer(producer_host)
+    producer = setup_producer()
 
     # Create consumer with incoming exchange/queue.
-    consumer_host = app.config['INCOMING_QUEUE_HOSTNAME']
-    consumer = setup_consumer(consumer_host, callback=process_message)
+    consumer = setup_consumer(callback=process_message)
     consumer.consume()
 
     # Loop "forever", as a service.
@@ -268,7 +252,7 @@ def run():
         # Trap (log) everything else.
         except Exception as e:
             err_line_no = sys.exc_info()[2].tb_lineno
-            logger.error("{}: {}".format(err_line_no, str(e)))
+            logger.exception("{}: {}".format(err_line_no, str(e)))
 
             # If we ignore the problem, perhaps it will go away ...
             time.sleep(10)
