@@ -167,7 +167,7 @@ def setup_consumer(cfg=incoming_cfg, callback=None):
 
 
 # Create a queue with a default binding key of "anything goes".
-def setup_queue(channel=None, cfg=None, binding_key='#', durable=True):
+def setup_queue(channel=None, cfg=None, durable=True):
     """ Return bound queue, "durable" by default """
 
     if channel is None:
@@ -179,7 +179,7 @@ def setup_queue(channel=None, cfg=None, binding_key='#', durable=True):
     logger.debug("cfg: {}".format(cfg))
 
     # N.B.: kombu mis-names the queue's Binding key as a Routing key!
-    queue = kombu.Queue(name=cfg.queue, exchange=cfg.exchange, routing_key=binding_key, durable=durable)
+    queue = kombu.Queue(name=cfg.queue, exchange=cfg.exchange, routing_key=cfg.binding_key, durable=durable)
     queue.maybe_bind(channel)
 
     # VIP: ensure that queue is declared! If it isn't, we can send messages to the queue but they die, silently :-(
@@ -190,7 +190,7 @@ def setup_queue(channel=None, cfg=None, binding_key='#', durable=True):
     except AccessRefused:
         pass
 
-    logger.info("queue name, exchange, binding_key: {}, {}, {}".format(queue.name, cfg.exchange, binding_key))
+    logger.info("queue name, exchange, binding_key: {}, {}, {}".format(queue.name, cfg.exchange, cfg.binding_key))
 
     return queue
 
