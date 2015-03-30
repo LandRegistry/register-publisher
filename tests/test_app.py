@@ -134,7 +134,7 @@ class TestRegisterPublisher(unittest.TestCase):
         self.message = make_message()
 
         producer = server.setup_producer(cfg=server.incoming_cfg)
-        producer.publish(body=self.message)
+        producer.publish(body=self.message, headers={'title_number': 'DN1'})
         logger.info("Put message, exchange: {}, {}".format(self.message, producer.exchange))
 
         producer.close()
@@ -151,7 +151,7 @@ class TestRegisterPublisher(unittest.TestCase):
         # Send a message to 'incoming' exchange - i.e. as if from SoR.
         with server.setup_producer(cfg=server.incoming_cfg) as producer:
 
-            producer.publish(body=self.message)
+            producer.publish(body=self.message, headers={'title_number': 'DN1'})
 
             # Kill connection to broker.
             producer.connection.close()
@@ -173,7 +173,7 @@ class TestRegisterPublisher(unittest.TestCase):
 
         # Send a message to 'incoming' exchange - i.e. as if from SoR.
         with server.setup_producer(cfg=server.incoming_cfg) as producer:
-            producer.publish(body=self.message)
+            producer.publish(body=self.message, headers={'title_number': 'DN1'})
             logger.debug(self.message)
 
         self.app.start()
@@ -190,7 +190,7 @@ class TestRegisterPublisher(unittest.TestCase):
 
         # Send a message to 'incoming' exchange - i.e. as if from SoR.
         with server.setup_producer(cfg=server.incoming_cfg) as producer:
-            producer.publish(body=self.message)
+            producer.publish(body=self.message, headers={'title_number': 'DN1'})
             logger.debug(self.message)
 
         # Kill application; wait long enough for message to be stored.
@@ -213,7 +213,7 @@ class TestRegisterPublisher(unittest.TestCase):
                 # Message to be sent.
                 self.message = make_message()
 
-                producer.publish(body=self.message)
+                producer.publish(body=self.message, headers={'title_number': 'DN1'})
                 logger.debug(self.message)
 
                 # Consume message from outgoing exchange, via callback.
