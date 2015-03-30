@@ -2,6 +2,7 @@
 import json
 import unittest
 import datetime
+import os
 from multiprocessing import Process
 from application import server
 
@@ -57,7 +58,10 @@ class TestRegisterPublisher(unittest.TestCase):
 
         with server.setup_consumer(cfg=cfg, callback=self.handle_message) as consumer:
 
+            logger.debug("cfg: {}".format(cfg))
+
             # 'consume' may be a misnomer here - it just initiates the consumption process, I believe.
+            # import pdb; pdb.set_trace()
             consumer.consume()
 
             # Execute 'drain_events()' loop in a time-out thread, in case it gets stuck.
@@ -103,9 +107,6 @@ class TestRegisterPublisher(unittest.TestCase):
 
         self.app = Application()
 
-        test_title = self.id().split(sep='.')[-1]
-        logger.info(test_title)
-
         # Ensure that message broker is alive, etc.
         self.reset()
 
@@ -115,6 +116,9 @@ class TestRegisterPublisher(unittest.TestCase):
         # Execute 'server.run()' as a separate process.
         self.app.start()
 
+        test_title = self.id().split(sep='.')[-1]
+        logger.info(test_title)
+
     def tearDown(self):
 
         logger.debug("setUp")
@@ -123,7 +127,8 @@ class TestRegisterPublisher(unittest.TestCase):
         self.app.join(timeout=5)
         self.app.terminate()
 
-        self.reset()
+        if os.getenv('LOG_THRESHOLD_LEVEL') != 'DEBUG':
+            self.reset()
 
     def test_incoming_queue(self):
         """ Basic check of 'incoming' message via default direct exchange """
@@ -134,7 +139,7 @@ class TestRegisterPublisher(unittest.TestCase):
         self.message = make_message()
 
         producer = server.setup_producer(cfg=server.incoming_cfg)
-        producer.publish(body=self.message)
+        producer.publish(body=self.message, routing_key=server.incoming_cfg.queue)
         logger.info("Put message, exchange: {}, {}".format(self.message, producer.exchange))
 
         producer.close()
@@ -151,7 +156,7 @@ class TestRegisterPublisher(unittest.TestCase):
         # Send a message to 'incoming' exchange - i.e. as if from SoR.
         with server.setup_producer(cfg=server.incoming_cfg) as producer:
 
-            producer.publish(body=self.message)
+            producer.publish(body=self.message, routing_key=server.incoming_cfg.queue)
 
             # Kill connection to broker.
             producer.connection.close()
@@ -190,7 +195,7 @@ class TestRegisterPublisher(unittest.TestCase):
 
         # Send a message to 'incoming' exchange - i.e. as if from SoR.
         with server.setup_producer(cfg=server.incoming_cfg) as producer:
-            producer.publish(body=self.message)
+            producer.publish(body=self.message, routing_key=server.incoming_cfg.queue)
             logger.debug(self.message)
 
         # Kill application; wait long enough for message to be stored.
@@ -207,22 +212,24 @@ class TestRegisterPublisher(unittest.TestCase):
         """ Send message from dummy "System Of Record", then consume and check it. """
 
         # Send a message to 'incoming' exchange - i.e. as if from SoR.
+        # import pdb; pdb.set_trace()
         with server.setup_producer(cfg=server.incoming_cfg) as producer:
             for n in range(count):
 
                 # Message to be sent.
                 self.message = make_message()
 
-                producer.publish(body=self.message)
+                producer.publish(body=self.message, routing_key=server.incoming_cfg.queue)
                 logger.debug(self.message)
+
+                # Wait long enough message to be processed.
+                self.app.join(timeout=1)
 
                 # Consume message from outgoing exchange, via callback.
                 self.consume(cfg=server.outgoing_cfg)
 
                 self.assertEqual(self.message, self.payload)
 
-        # Wait long enough for all messages to be processed.
-        self.app.join(timeout=(count // 10) + 1)
 
     def test_multiple_end_to_end(self):
         """ Check many messages. """

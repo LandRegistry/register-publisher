@@ -16,12 +16,12 @@ class Config(object):
     # Kombu.
     MAX_RETRIES = os.getenv('MAX_RETRIES', 10)                                      # Maximum 'ensure' limit.
 
-    # AMQP.
+    # AMQP. Note that the Outgoing Queue does not need to be named but this may be useful for monitoring etc.
     INCOMING_QUEUE_HOSTNAME = os.getenv('INCOMING_QUEUE_HOSTNAME', "amqp://mqpublisher:mqpublisherpassword@localhost:5672/")   # RabbitMQ IP address
     OUTGOING_QUEUE_HOSTNAME = os.getenv('OUTGOING_QUEUE_HOSTNAME', "amqp://mqpublisher:mqpublisherpassword@localhost:5672/")   # RabbitMQ IP address
 
     INCOMING_QUEUE = os.getenv('INCOMING_QUEUE', 'system_of_record')                # SOR to RP queue name
-    OUTGOING_QUEUE = os.getenv('OUTGOING_QUEUE', 'register_publisher')              # Default outgoing queue name
+    OUTGOING_QUEUE = os.getenv('OUTGOING_QUEUE', 'feeder')                          # Default outgoing queue name
 
     # RabbitMQ Exchange default values:
     #   delivery_mode: '2' (persistent messages)

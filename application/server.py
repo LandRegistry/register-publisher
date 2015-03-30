@@ -10,6 +10,7 @@ from flask import Flask
 from kombu.common import maybe_declare
 from amqp import AccessRefused
 from python_logging.setup_logging import setup_logging
+import multiprocessing
 
 """
 Register-Publisher: forwards messages from the System of Record to the outside world, via AMQP "topic broadcast".
@@ -37,24 +38,26 @@ outgoing_cfg = app.config['OUTGOING_CFG']
 # Constraints, etc.
 MAX_RETRIES = app.config['MAX_RETRIES']
 
-LOG_NAME = "Register-Publisher"
+LOG_NAME = "RP"
 
 # Set up logger
 def setup_logger(name=__name__):
 
     # Standard LR configuration.
     setup_logging()
-
     # Specify base logging threshold level.
     ll = app.config['LOG_THRESHOLD_LEVEL']
     logger = logging.getLogger(name)
     logger.setLevel(ll)
+    logger.setLevel(logging.DEBUG)
 
     return logger
 
 logger = setup_logger(LOG_NAME)
 
 log_threshold_level_name = logging.getLevelName(logger.getEffectiveLevel())
+
+
 
 
 # RabbitMQ connection; default user/password.
@@ -121,13 +124,16 @@ def setup_channel(queue_hostname, exchange=None, connection=None):
 # Get Producer, for 'outgoing' exchange and JSON "serializer" by default.
 def setup_producer(cfg=outgoing_cfg, serializer='json'):
 
+    logger.debug("cfg: {}".format(cfg))
+
     channel = setup_channel(cfg.hostname, exchange=cfg.exchange)
 
     # Make sure that outgoing queue exists!
     setup_queue(channel, cfg=cfg)
 
-    # Publish message to given queue.
-    producer = kombu.Producer(channel, exchange=cfg.exchange, routing_key=cfg.queue, serializer=serializer)
+    # Publish message; the default message *routing* key is the outgoing queue name.
+    producer = kombu.Producer(channel, exchange=cfg.exchange, routing_key=cfg.queue, serializer=serializer) ## OK
+    # producer = kombu.Producer(channel, exchange=cfg.exchange, serializer=serializer)
 
     logger.debug('channel_id: {}'.format(producer.channel.channel_id))
     logger.debug('exchange: {}'.format(producer.exchange.name))
@@ -140,6 +146,8 @@ def setup_producer(cfg=outgoing_cfg, serializer='json'):
 # Consumer, for 'incoming' queue by default.
 def setup_consumer(cfg=incoming_cfg, callback=None):
     """ Create consumer with single queue and callback """
+
+    logger.debug("cfg: {}".format(cfg))
 
     channel = setup_channel(cfg.hostname, cfg.exchange)
     logger.info("queue_name: {}".format(cfg.queue))
@@ -155,25 +163,31 @@ def setup_consumer(cfg=incoming_cfg, callback=None):
     return consumer
 
 
-def setup_queue(channel, cfg=None, key=None, durable=True):
+# Create a queue with a default binding key of "anything goes".
+def setup_queue(channel=None, cfg=None, binding_key='#', durable=True):
     """ Return bound queue, "durable" by default """
 
-    if cfg is None:
-        raise RuntimeError("setup_queue: configuration 'cfg' required!")
+    if channel is None:
+        raise RuntimeError("setup_queue: 'channel' required!")
 
-    routing_key = cfg.queue if key is None else key
-    queue = kombu.Queue(name=cfg.queue, exchange=cfg.exchange, routing_key=routing_key, durable=durable)
+    if cfg is None:
+        raise RuntimeError("setup_queue: 'cfg' required!")
+
+    logger.debug("cfg: {}".format(cfg))
+
+    # N.B.: kombu mis-names the queue's Binding key as a Routing key!
+    queue = kombu.Queue(name=cfg.queue, exchange=cfg.exchange, routing_key=binding_key, durable=durable)
     queue.maybe_bind(channel)
 
-    # VIP: ensure that queue is declared! If it isn't, we can send message to queue but they die, silently :-(
-    # [IMO, this should have been done by default via the 'bind' operation].
+    # VIP: ensure that queue is declared! If it isn't, we can send messages to the queue but they die, silently :-(
+    # Note: IMO, this should have been done by default via the 'bind' operation - and that by the class.
     try:
         queue.declare()
     # 'AccessRefused' raised by kombu if queue already declared.
     except AccessRefused:
         pass
 
-    logger.info("queue name, exchange, routing_key: {}, {}, {}".format(queue.name, cfg.exchange, routing_key))
+    logger.info("queue name, exchange, binding_key: {}, {}, {}".format(queue.name, cfg.exchange, binding_key))
 
     return queue
 
@@ -182,13 +196,13 @@ def setup_queue(channel, cfg=None, key=None, durable=True):
 def run():
     """ "System of Record" to "Feeder" re-publisher. """
 
-    logger = setup_logger(LOG_NAME)
+    logger = setup_logger(LOG_NAME + '.run')
 
     def errback(exc, interval):
-            """ Callback for use with 'ensure/autoretry'. """
+        """ Callback for use with 'ensure/autoretry'. """
 
-            logger.error('Error: {}'.format(exc))
-            logger.info('Retry in {} seconds.'.format(interval))
+        logger.error('Error: {}'.format(exc))
+        logger.info('Retry in {} seconds.'.format(interval))
 
     def ensure(connection, instance, method, *args, **kwargs):
         """ Retries 'method' if it raises connection or channel error.
@@ -217,9 +231,9 @@ def run():
         logger.audit("Pull from incoming queue: {}".format(message.delivery_info))
 
         # Forward message to outgoing exchange, with retry management.
-        logger.audit("Push to outgoing queue: {}".format(message.delivery_info))
+        logger.audit("Push to exchange: {}".format(producer.exchange))
         ensure(producer.connection, producer, 'publish', body)
-        logger.audit("Acknowledged Push (implied): {}".format(message.delivery_tag))
+        logger.audit("Push Acknowledged (implied): {}".format(message.delivery_tag))
 
         # Acknowledge message only after publish(); if that fails, message is still in queue.
         message.ack()
