@@ -217,17 +217,21 @@ def run():
           'on_message()' doesn't really help, because publish() requires a message body.
 
         """
-
-        logger.audit("Pull from incoming queue: {}".format(message.delivery_info))
+        pull_message = "Pull from incoming queue: {}".format(message.delivery_info)
+        logger.audit(make_log_msg(pull_message, 'debug', get_title_number(message), incoming_cfg.hostname))
 
         # Forward message to outgoing exchange, with retry management.
-        logger.audit("Push to outgoing queue: {}".format(message.delivery_info))
+        outgoing_push_msg = "Push to outgoing queue: {}".format(message.delivery_info)
+        logger.audit(make_log_msg(outgoing_push_msg, 'debug', get_title_number(message), incoming_cfg.hostname))
+
         ensure(producer.connection, producer, 'publish', body)
-        logger.audit("Acknowledged Push (implied): {}".format(message.delivery_tag))
+        acknowledge_push_message = "Acknowledged Push (implied): {}".format(message.delivery_tag)
+        logger.audit(make_log_msg(acknowledge_push_message, 'debug', get_title_number(message), outgoing_cfg.hostname))
 
         # Acknowledge message only after publish(); if that fails, message is still in queue.
         message.ack()
-        logger.audit("Acknowledged Pull: {}".format(message.delivery_tag))
+        acknowledged_pull_msg = "Acknowledged Pull: {}".format(message.delivery_tag)
+        logger.audit(make_log_msg(acknowledged_pull_msg, 'debug', get_title_number(message), outgoing_cfg.hostname))
 
 
     # Producer for outgoing exchange.
@@ -260,6 +264,33 @@ def run():
     # Graceful degradation.
     producer.close()
     consumer.close()
+
+
+    def make_log_msg(log_message, log_level, title_number, hostname):
+        #Constructs the message to submit to audit.
+        msg = log_message + 'queue address is: %s. ' % hostname
+        msg = msg + 'Signed in as: %s. ' % linux_user()
+        msg = msg + 'Title number is: %s. ' % title_number
+        msg = msg + 'Logged at: register-publisher/logs. '
+        return msg
+
+
+    def get_title_number(mq_message):
+        #gets the title number from minted json
+        try:
+            return mq_message.properties['application_headers']
+        except Exception as err:
+            error_message = "title number header not found for message"
+            app.logger.error(make_log_msg(error_message, 'error', 'no title', incoming_cfg.hostname))
+            return error_message + str(err)
+
+
+    def linux_user():
+        try:
+            return pwd.getpwuid(os.geteuid()).pw_name
+        except Exception as err:
+            return "failed to get user: %s" % err
+
 
 
 if __name__ == "__main__":
