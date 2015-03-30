@@ -10,7 +10,7 @@ from flask import Flask
 from kombu.common import maybe_declare
 from amqp import AccessRefused
 from python_logging.setup_logging import setup_logging
-import multiprocessing
+
 
 """
 Register-Publisher: forwards messages from the System of Record to the outside world, via AMQP "topic broadcast".
@@ -56,8 +56,6 @@ def setup_logger(name=__name__):
 logger = setup_logger(LOG_NAME)
 
 log_threshold_level_name = logging.getLevelName(logger.getEffectiveLevel())
-
-
 
 
 # RabbitMQ connection; default user/password.
@@ -122,14 +120,19 @@ def setup_channel(queue_hostname, exchange=None, connection=None):
 
 
 # Get Producer, for 'outgoing' exchange and JSON "serializer" by default.
-def setup_producer(cfg=outgoing_cfg, serializer='json'):
+def setup_producer(cfg=outgoing_cfg, serializer='json', set_queue=True):
+    """ Create a Producer, with a corresponding queue if required. """
+
+    assert type(set_queue) is bool
 
     logger.debug("cfg: {}".format(cfg))
 
     channel = setup_channel(cfg.hostname, exchange=cfg.exchange)
 
-    # Make sure that outgoing queue exists!
-    setup_queue(channel, cfg=cfg)
+    # Publishing is to an exchange but we need a queue to store messages *before* publication.
+    # Note that Consumers should really be responsible for (their) queues.
+    if set_queue:
+        setup_queue(channel, cfg=cfg)
 
     # Publish message; the default message *routing* key is the outgoing queue name.
     producer = kombu.Producer(channel, exchange=cfg.exchange, routing_key=cfg.queue, serializer=serializer) ## OK
