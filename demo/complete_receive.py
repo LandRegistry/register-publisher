@@ -23,6 +23,8 @@ def handle_message(body, message):
     print('Received message: %r' % (body, ))
     print(' properties:\n%s' % (pretty(message.properties), ))
     print(' delivery_info:\n%s' % (pretty(message.delivery_info), ))
+    print ('')
+    print ('headers: \n%s' % message.properties['application_headers'])
     message.ack()
 
 message = queue.get()
