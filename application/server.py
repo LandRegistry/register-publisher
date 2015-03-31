@@ -131,17 +131,20 @@ def setup_producer(cfg=outgoing_cfg, serializer='json', set_queue=True):
 
     # Publishing is to an exchange but we need a queue to store messages *before* publication.
     # Note that Consumers should really be responsible for (their) queues.
+    queue = None
     if set_queue:
-        setup_queue(channel, cfg=cfg)
+        queue = setup_queue(channel, cfg=cfg)
 
     # Publish message; the default message *routing* key is the outgoing queue name.
-    producer = kombu.Producer(channel, exchange=cfg.exchange, routing_key=cfg.queue, serializer=serializer) ## OK
-    # producer = kombu.Producer(channel, exchange=cfg.exchange, serializer=serializer)
+    producer = kombu.Producer(channel, exchange=cfg.exchange, routing_key=cfg.queue, serializer=serializer)
 
     logger.debug('channel_id: {}'.format(producer.channel.channel_id))
     logger.debug('exchange: {}'.format(producer.exchange.name))
     logger.debug('routing_key: {}'.format(producer.routing_key))
     logger.debug('serializer: {}'.format(producer.serializer))
+
+    # Track queue, for debugging purposes.
+    producer._queue = queue
 
     return producer
 
@@ -166,7 +169,6 @@ def setup_consumer(cfg=incoming_cfg, callback=None):
     return consumer
 
 
-# Create a queue with a default binding key of "anything goes".
 def setup_queue(channel=None, cfg=None, durable=True):
     """ Return bound queue, "durable" by default """
 

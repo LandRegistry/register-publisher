@@ -21,9 +21,9 @@ class Config(object):
     OUTGOING_QUEUE_HOSTNAME = os.getenv('OUTGOING_QUEUE_HOSTNAME', "amqp://mqpublisher:mqpublisherpassword@localhost:5672/")   # RabbitMQ IP address
 
     INCOMING_QUEUE = os.getenv('INCOMING_QUEUE', 'system_of_record')                # SOR to RP queue name
-    OUTGOING_QUEUE = os.getenv('OUTGOING_QUEUE', 'feeder.digitalregisterview')      # Default outgoing queue name
+    OUTGOING_QUEUE = os.getenv('OUTGOING_QUEUE', 'feeder')                          # Default outgoing queue name
 
-    # Queue binding keys.
+    # Queue binding keys: "Anything goes".
     INCOMING_KEY = os.getenv('INCOMING_KEY', '#')
     OUTGOING_KEY = os.getenv('OUTGOING_KEY', '#')
 
@@ -31,7 +31,7 @@ class Config(object):
     #   delivery_mode: '2' (persistent messages)
     #   durable: True (exchange remains 'active' on server re-start)
     INCOMING_EXCHANGE = kombu.Exchange(type="direct")
-    OUTGOING_EXCHANGE = kombu.Exchange(type="topic")
+    OUTGOING_EXCHANGE = kombu.Exchange(type="topic", name="amq.topic")
 
     # Collections: Incoming for a Consumer, Outgoing for a Producer.
     Configuration = namedtuple("Configuration", ['hostname', 'exchange', 'queue', 'binding_key'])

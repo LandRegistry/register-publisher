@@ -61,7 +61,6 @@ class TestRegisterPublisher(unittest.TestCase):
             logger.debug("cfg: {}".format(cfg))
 
             # 'consume' may be a misnomer here - it just initiates the consumption process, I believe.
-            # import pdb; pdb.set_trace()
             consumer.consume()
 
             # Execute 'drain_events()' loop in a time-out thread, in case it gets stuck.
@@ -205,6 +204,28 @@ class TestRegisterPublisher(unittest.TestCase):
 
         # Consume message from outgoing exchange.
         self.consume(cfg=server.outgoing_cfg)
+
+        self.assertEqual(self.message, self.payload)
+
+    def test_topic_keys(self):
+        """ Check that message with a suitable routing_key matches corresponding binding_key. """
+
+        # We don't need the app to be running for this test.
+        self.app.terminate()
+
+        self.message = make_message()
+
+        ROOT_KEY = 'feeder'
+
+        # Set binding key for the queue that is created via setup_producer().
+        cfg = server.outgoing_cfg._replace(binding_key=ROOT_KEY+'.*')
+
+        with server.setup_producer(cfg=cfg) as producer:
+            producer.publish(body=self.message, routing_key=ROOT_KEY+'.test_topic_keys')
+            logger.debug(self.message)
+
+        # Consume message from outgoing exchange.
+        self.consume(cfg=cfg)
 
         self.assertEqual(self.message, self.payload)
 
