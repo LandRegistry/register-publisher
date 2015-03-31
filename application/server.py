@@ -11,6 +11,7 @@ from flask import Flask
 from kombu.common import maybe_declare
 from amqp import AccessRefused
 from python_logging.setup_logging import setup_logging
+import re
 
 """
 Register-Publisher: forwards messages from the System of Record to the outside world, via AMQP "broadcast".
@@ -244,20 +245,24 @@ def run():
 
         """
         pull_message = " Pull from incoming queue: {}".format(message.delivery_info)
-        logger.audit(make_log_msg(pull_message, 'debug', get_message_header(message), incoming_cfg.hostname))
+        logger.audit(make_log_msg(pull_message, 'debug', get_message_header(message),
+                                  remove_username_password(incoming_cfg.hostname)))
 
         # Forward message to outgoing exchange, with retry management.
         outgoing_push_msg = " Push to outgoing queue: {}".format(message.delivery_info)
-        logger.audit(make_log_msg(outgoing_push_msg, 'debug', get_message_header(message), incoming_cfg.hostname))
+        logger.audit(make_log_msg(outgoing_push_msg, 'debug', get_message_header(message),
+                                  remove_username_password(incoming_cfg.hostname)))
 
         ensure(producer.connection, producer, 'publish', body)
         acknowledge_push_message = " Acknowledged Push (implied): {}".format(message.delivery_tag)
-        logger.audit(make_log_msg(acknowledge_push_message, 'debug', get_message_header(message), outgoing_cfg.hostname))
+        logger.audit(make_log_msg(acknowledge_push_message, 'debug', get_message_header(message),
+                                  remove_username_password(outgoing_cfg.hostname)))
 
         # Acknowledge message only after publish(); if that fails, message is still in queue.
         message.ack()
         acknowledged_pull_msg = " Acknowledged Pull: {}".format(message.delivery_tag)
-        logger.audit(make_log_msg(acknowledged_pull_msg, 'debug', get_message_header(message), outgoing_cfg.hostname))
+        logger.audit(make_log_msg(acknowledged_pull_msg, 'debug', get_message_header(message),
+                                  remove_username_password(outgoing_cfg.hostname)))
 
 
     # Producer for outgoing exchange.
@@ -290,6 +295,13 @@ def run():
     # Graceful degradation.
     producer.close()
     consumer.close()
+
+def remove_username_password(endpoint_string):
+    try:
+        return re.sub('://[^:]+:[^@]+@', '://', endpoint_string)
+    except:
+        return "unknown endpoint"
+    end
 
 
 if __name__ == "__main__":
