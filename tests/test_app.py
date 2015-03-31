@@ -76,25 +76,29 @@ class TestRegisterPublisher(unittest.TestCase):
 
             # """ Clear the decks. """
 
-        logger.debug("reset")
+        cfg = server.outgoing_cfg
+        logger.debug(cfg)
 
-        with server.setup_connection(server.outgoing_cfg.hostname) as outgoing_connection:
+        with server.setup_connection(cfg.hostname) as outgoing_connection:
 
             # Need a connection to delete the queues.
             self.assertEqual(outgoing_connection.connected, True)
 
             outgoing_channel = outgoing_connection.channel()
-            queue = server.setup_queue(outgoing_channel, cfg=server.outgoing_cfg)
+            queue = server.setup_queue(outgoing_channel, cfg=cfg)
             queue.purge()
             queue.delete()
 
-        with server.setup_connection(server.incoming_cfg.hostname) as incoming_connection:
+        cfg = server.incoming_cfg
+        logger.debug(cfg)
+
+        with server.setup_connection(cfg.hostname) as incoming_connection:
 
             # Need a connection to delete the queues.
             self.assertEqual(incoming_connection.connected, True)
 
             incoming_channel = incoming_connection.channel()
-            queue = server.setup_queue(incoming_channel, cfg=server.incoming_cfg)
+            queue = server.setup_queue(incoming_channel, cfg=cfg)
             queue.purge()
             queue.delete()
 
@@ -138,7 +142,7 @@ class TestRegisterPublisher(unittest.TestCase):
         self.message = make_message()
 
         producer = server.setup_producer(cfg=server.incoming_cfg)
-        producer.publish(body=self.message, routing_key=server.incoming_cfg.queue)
+        producer.publish(body=self.message, headers={'title_number': 'DN1'}, routing_key=server.incoming_cfg.queue)
         logger.info("Put message, exchange: {}, {}".format(self.message, producer.exchange))
 
         producer.close()
@@ -155,7 +159,7 @@ class TestRegisterPublisher(unittest.TestCase):
         # Send a message to 'incoming' exchange - i.e. as if from SoR.
         with server.setup_producer(cfg=server.incoming_cfg) as producer:
 
-            producer.publish(body=self.message, routing_key=server.incoming_cfg.queue)
+            producer.publish(body=self.message, headers={'title_number': 'DN1'}, routing_key=server.incoming_cfg.queue)
 
             # Kill connection to broker.
             producer.connection.close()
@@ -177,7 +181,7 @@ class TestRegisterPublisher(unittest.TestCase):
 
         # Send a message to 'incoming' exchange - i.e. as if from SoR.
         with server.setup_producer(cfg=server.incoming_cfg) as producer:
-            producer.publish(body=self.message)
+            producer.publish(body=self.message, headers={'title_number': 'DN1'})
             logger.debug(self.message)
 
         self.app.start()
@@ -194,7 +198,7 @@ class TestRegisterPublisher(unittest.TestCase):
 
         # Send a message to 'incoming' exchange - i.e. as if from SoR.
         with server.setup_producer(cfg=server.incoming_cfg) as producer:
-            producer.publish(body=self.message, routing_key=server.incoming_cfg.queue)
+            producer.publish(body=self.message, headers={'title_number': 'DN1'}, routing_key=server.incoming_cfg.queue)
             logger.debug(self.message)
 
         # Kill application; wait long enough for message to be stored.
@@ -233,14 +237,13 @@ class TestRegisterPublisher(unittest.TestCase):
         """ Send message from dummy "System Of Record", then consume and check it. """
 
         # Send a message to 'incoming' exchange - i.e. as if from SoR.
-        # import pdb; pdb.set_trace()
         with server.setup_producer(cfg=server.incoming_cfg) as producer:
             for n in range(count):
 
                 # Message to be sent.
                 self.message = make_message()
 
-                producer.publish(body=self.message, routing_key=server.incoming_cfg.queue)
+                producer.publish(body=self.message, headers={'title_number': 'DN1'}, routing_key=server.incoming_cfg.queue)
                 logger.debug(self.message)
 
                 # Wait long enough message to be processed.

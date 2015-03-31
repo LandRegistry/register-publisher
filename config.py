@@ -30,6 +30,9 @@ class Config(object):
     # RabbitMQ Exchange default values:
     #   delivery_mode: '2' (persistent messages)
     #   durable: True (exchange remains 'active' on server re-start)
+    # N.B.: from the RabbitMQ UI:
+    # "The default exchange is implicitly bound to every queue, with a routing key equal to the queue name.
+    # It it not possible to explicitly bind to, or unbind from the default exchange. It also cannot be deleted."
     INCOMING_EXCHANGE = kombu.Exchange(type="direct")
     OUTGOING_EXCHANGE = kombu.Exchange(type="topic", name="amq.topic")
 

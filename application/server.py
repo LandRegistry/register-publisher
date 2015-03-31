@@ -1,6 +1,7 @@
 #!/bin/python
 import os
 import sys
+import pwd
 import logging
 import logging.handlers
 import stopit
@@ -10,7 +11,7 @@ from flask import Flask
 from kombu.common import maybe_declare
 from amqp import AccessRefused
 from python_logging.setup_logging import setup_logging
-
+import re
 
 """
 Register-Publisher: forwards messages from the System of Record to the outside world, via AMQP "topic broadcast".
@@ -40,16 +41,20 @@ MAX_RETRIES = app.config['MAX_RETRIES']
 
 LOG_NAME = "RP"
 
+# Logger-independent output to 'stderr'.
+# def echo(message):
+#     print('\n' + message, file=sys.stderr)
+
 # Set up logger
 def setup_logger(name=__name__):
 
     # Standard LR configuration.
     setup_logging()
+
     # Specify base logging threshold level.
     ll = app.config['LOG_THRESHOLD_LEVEL']
     logger = logging.getLogger(name)
     logger.setLevel(ll)
-    logger.setLevel(logging.DEBUG)
 
     return logger
 
@@ -153,8 +158,6 @@ def setup_producer(cfg=outgoing_cfg, serializer='json', set_queue=True):
 def setup_consumer(cfg=incoming_cfg, callback=None):
     """ Create consumer with single queue and callback """
 
-    logger.debug("cfg: {}".format(cfg))
-
     channel = setup_channel(cfg.hostname, cfg.exchange)
     logger.info("queue_name: {}".format(cfg.queue))
 
@@ -196,6 +199,30 @@ def setup_queue(channel=None, cfg=None, durable=True):
 
     return queue
 
+def make_log_msg(log_message, log_level, message_header, hostname):
+    #Constructs the message to submit to audit.  Message header contains title number.
+    msg = log_message + ' queue address is: %s. ' % hostname
+    msg = msg + ' Signed in as: %s. ' % linux_user()
+    msg = msg + ' Message header is: %s. ' % message_header
+    msg = msg + ' Logged at: register-publisher/logs. '
+    return msg
+
+
+def get_message_header(mq_message):
+    #contains the title number for audit
+    try:
+        return mq_message.properties['application_headers']
+    except Exception as err:
+        error_message = "message header not retrieved for message"
+        app.logger.error(make_log_msg(error_message, 'error', 'no title', incoming_cfg.hostname))
+        return error_message + str(err)
+
+
+def linux_user():
+    try:
+        return pwd.getpwuid(os.geteuid()).pw_name
+    except Exception as err:
+        return "failed to get user: %s" % err
 
 # This is executed as a separate process by unit tests; cannot refer to 'INCOMING_QUEUE' etc. in that case.
 def run():
@@ -232,17 +259,25 @@ def run():
           'on_message()' doesn't really help, because publish() requires a message body.
 
         """
-
-        logger.audit("Pull from incoming queue: {}".format(message.delivery_info))
+        pull_message = " Pull from incoming queue: {}".format(message.delivery_info)
+        logger.audit(make_log_msg(pull_message, 'debug', get_message_header(message),
+                                  remove_username_password(incoming_cfg.hostname)))
 
         # Forward message to outgoing exchange, with retry management.
-        logger.audit("Push to exchange: {}".format(producer.exchange))
+        outgoing_push_msg = " Push to outgoing queue: {}".format(message.delivery_info)
+        logger.audit(make_log_msg(outgoing_push_msg, 'debug', get_message_header(message),
+                                  remove_username_password(incoming_cfg.hostname)))
+
         ensure(producer.connection, producer, 'publish', body)
-        logger.audit("Push Acknowledged (implied): {}".format(message.delivery_tag))
+        acknowledge_push_message = " Acknowledged Push (implied): {}".format(message.delivery_tag)
+        logger.audit(make_log_msg(acknowledge_push_message, 'debug', get_message_header(message),
+                                  remove_username_password(outgoing_cfg.hostname)))
 
         # Acknowledge message only after publish(); if that fails, message is still in queue.
         message.ack()
-        logger.audit("Acknowledged Pull: {}".format(message.delivery_tag))
+        acknowledged_pull_msg = " Acknowledged Pull: {}".format(message.delivery_tag)
+        logger.audit(make_log_msg(acknowledged_pull_msg, 'debug', get_message_header(message),
+                                  remove_username_password(outgoing_cfg.hostname)))
 
 
     # Producer for outgoing exchange.
@@ -275,6 +310,13 @@ def run():
     # Graceful degradation.
     producer.close()
     consumer.close()
+
+def remove_username_password(endpoint_string):
+    try:
+        return re.sub('://[^:]+:[^@]+@', '://', endpoint_string)
+    except:
+        return "unknown endpoint"
+    end
 
 
 if __name__ == "__main__":
