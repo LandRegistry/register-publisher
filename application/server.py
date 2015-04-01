@@ -51,7 +51,6 @@ def setup_logger(name=__name__):
     ll = app.config['LOG_THRESHOLD_LEVEL']
     logger = logging.getLogger(name)
     logger.setLevel(ll)
-    logger.setLevel(logging.DEBUG)
 
     return logger
 
@@ -214,7 +213,7 @@ def get_message_header(mq_message):
         return mq_message.properties['application_headers']
     except Exception as err:
         error_message = "message header not retrieved for message"
-        app.logger.error(make_log_msg(error_message, 'error', 'no title', incoming_cfg.hostname))
+        logger.error(make_log_msg(error_message, 'error', 'no title', incoming_cfg.hostname))
         return error_message + str(err)
 
 
@@ -253,11 +252,11 @@ def run():
     def process_message(body, message):
         """ Forward messages from the 'System of Record' to the outside world
 
-        'body' is decoded content, 'message' is the packet as a whole.
+            'body' is decoded content, 'message' is the packet as a whole.
 
-        N.B.:
-          This will unpack incoming messages, then pack them again when forwarding.
-          'on_message()' doesn't really help, because publish() requires a message body.
+            N.B.:
+              This will unpack incoming messages, then pack them again when forwarding.
+              'on_message()' doesn't really help, because publish() requires a message body.
 
         """
 
