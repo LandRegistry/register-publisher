@@ -138,7 +138,7 @@ class TestRegisterPublisher(unittest.TestCase):
         self.message = make_message()
 
         producer = server.setup_producer(cfg=server.incoming_cfg)
-        producer.publish(body=self.message, routing_key=server.incoming_cfg.queue)
+        producer.publish(body=self.message, routing_key=server.incoming_cfg.queue, headers={'title_number': 'DN1'})
         logger.info("Put message, exchange: {}, {}".format(self.message, producer.exchange))
 
         producer.close()
@@ -155,7 +155,7 @@ class TestRegisterPublisher(unittest.TestCase):
         # Send a message to 'incoming' exchange - i.e. as if from SoR.
         with server.setup_producer(cfg=server.incoming_cfg) as producer:
 
-            producer.publish(body=self.message, routing_key=server.incoming_cfg.queue)
+            producer.publish(body=self.message, routing_key=server.incoming_cfg.queue, headers={'title_number': 'DN1'})
 
             # Kill connection to broker.
             producer.connection.close()
@@ -177,7 +177,7 @@ class TestRegisterPublisher(unittest.TestCase):
 
         # Send a message to 'incoming' exchange - i.e. as if from SoR.
         with server.setup_producer(cfg=server.incoming_cfg) as producer:
-            producer.publish(body=self.message)
+            producer.publish(body=self.message, headers={'title_number': 'DN1'})
             logger.debug(self.message)
 
         self.app.start()
@@ -194,7 +194,7 @@ class TestRegisterPublisher(unittest.TestCase):
 
         # Send a message to 'incoming' exchange - i.e. as if from SoR.
         with server.setup_producer(cfg=server.incoming_cfg) as producer:
-            producer.publish(body=self.message, routing_key=server.incoming_cfg.queue)
+            producer.publish(body=self.message, routing_key=server.incoming_cfg.queue, headers={'title_number': 'DN1'})
             logger.debug(self.message)
 
         # Kill application; wait long enough for message to be stored.
@@ -221,7 +221,7 @@ class TestRegisterPublisher(unittest.TestCase):
         cfg = server.outgoing_cfg._replace(binding_key=ROOT_KEY+'.*')
 
         with server.setup_producer(cfg=cfg) as producer:
-            producer.publish(body=self.message, routing_key=ROOT_KEY+'.test_topic_keys')
+            producer.publish(body=self.message, routing_key=ROOT_KEY+'.test_topic_keys', headers={'title_number': 'DN1'})
             logger.debug(self.message)
 
         # Consume message from outgoing exchange.
@@ -240,7 +240,7 @@ class TestRegisterPublisher(unittest.TestCase):
                 # Message to be sent.
                 self.message = make_message()
 
-                producer.publish(body=self.message, routing_key=server.incoming_cfg.queue)
+                producer.publish(body=self.message, routing_key=server.incoming_cfg.queue, headers={'title_number': 'DN1'})
                 logger.debug(self.message)
 
                 # Wait long enough message to be processed.
