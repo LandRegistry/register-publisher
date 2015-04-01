@@ -1,6 +1,8 @@
 #!/bin/python
 import os
 import sys
+import pwd
+import re
 import logging
 import logging.handlers
 import stopit
@@ -197,6 +199,32 @@ def setup_queue(channel=None, cfg=None, durable=True):
     return queue
 
 
+def make_log_msg(log_message, log_level, message_header, hostname):
+    #Constructs the message to submit to audit. Message header contains title number.
+    msg = log_message + ' queue address is: %s. ' % hostname
+    msg = msg + ' Signed in as: %s. ' % linux_user()
+    msg = msg + ' Message header is: %s. ' % message_header
+    msg = msg + ' Logged at: register-publisher/logs. '
+    return msg
+
+
+def get_message_header(mq_message):
+    #contains the title number for audit
+    try:
+        return mq_message.properties['application_headers']
+    except Exception as err:
+        error_message = "message header not retrieved for message"
+        app.logger.error(make_log_msg(error_message, 'error', 'no title', incoming_cfg.hostname))
+        return error_message + str(err)
+
+
+def linux_user():
+    try:
+        return pwd.getpwuid(os.geteuid()).pw_name
+    except Exception as err:
+        return "failed to get user: %s" % err
+
+
 # This is executed as a separate process by unit tests; cannot refer to 'INCOMING_QUEUE' etc. in that case.
 def run():
     """ "System of Record" to "Feeder" re-publisher. """
@@ -233,10 +261,13 @@ def run():
 
         """
 
-        logger.audit("Pull from incoming queue: {}".format(message.delivery_info))
+        pull_message = " Pull from incoming queue: {}".format(message.delivery_info)
+        logger.audit(make_log_msg(pull_message, 'debug', get_message_header(message), remove_username_password(incoming_cfg.hostname)))
 
         # Forward message to outgoing exchange, with retry management.
-        logger.audit("Push to exchange: {}".format(producer.exchange))
+        outgoing_push_msg = " Push to outgoing queue: {}".format(message.delivery_info)
+        logger.audit(make_log_msg(outgoing_push_msg, 'debug', get_message_header(message), remove_username_password(incoming_cfg.hostname)))
+
         ensure(producer.connection, producer, 'publish', body)
         logger.audit("Push Acknowledged (implied): {}".format(message.delivery_tag))
 
@@ -275,6 +306,12 @@ def run():
     # Graceful degradation.
     producer.close()
     consumer.close()
+
+def remove_username_password(endpoint_string):
+    try:
+        return re.sub('://[^:]+:[^@]+@', '://', endpoint_string)
+    except:
+        return "unknown endpoint"
 
 
 if __name__ == "__main__":
