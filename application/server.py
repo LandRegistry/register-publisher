@@ -301,7 +301,7 @@ def remove_username_password(endpoint_string):
         return re.sub('://[^:]+:[^@]+@', '://', endpoint_string)
     except:
         return "unknown endpoint"
-    end
+
 
 
 if __name__ == "__main__":
