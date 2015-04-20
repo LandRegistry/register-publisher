@@ -69,6 +69,7 @@ class TestRegisterPublisher(unittest.TestCase):
                 consumer.connection.drain_events(timeout=5)
             except Exception as e:
                 logger.error(e)
+                raise
             finally:
                 consumer.close()
 
@@ -211,7 +212,30 @@ class TestRegisterPublisher(unittest.TestCase):
 
         self.assertEqual(self.message, self.payload)
 
-    def test_topic_keys(self):
+    def test_default_topic_keys(self):
+        """ Check that message with a suitable routing_key matches the default binding_key. """
+
+        # We don't need the app to be running for this test.
+        self.app.terminate()
+
+        self.message = make_message()
+
+        ROOT_KEY = 'feeder'
+
+        # Use default binding key for the queue that is created via setup_producer().
+        cfg = server.outgoing_cfg
+
+        with server.setup_producer(cfg=cfg) as producer:
+            routing_key = ROOT_KEY + '.test_default_topic_keys'
+            producer.publish(body=self.message, routing_key=routing_key, headers={'title_number': 'DN1'})
+            logger.debug(self.message)
+
+        # Consume message from outgoing exchange.
+        self.consume(cfg=cfg)
+
+        self.assertEqual(self.message, self.payload)
+
+    def test_valid_topic_keys(self):
         """ Check that message with a suitable routing_key matches corresponding binding_key. """
 
         # We don't need the app to be running for this test.
@@ -225,13 +249,35 @@ class TestRegisterPublisher(unittest.TestCase):
         cfg = server.outgoing_cfg._replace(binding_key=ROOT_KEY+'.*')
 
         with server.setup_producer(cfg=cfg) as producer:
-            producer.publish(body=self.message, routing_key=ROOT_KEY+'.test_topic_keys', headers={'title_number': 'DN1'})
+            routing_key = ROOT_KEY + '.test_valid_topic_keys'
+            producer.publish(body=self.message, routing_key=routing_key, headers={'title_number': 'DN1'})
             logger.debug(self.message)
 
         # Consume message from outgoing exchange.
         self.consume(cfg=cfg)
 
         self.assertEqual(self.message, self.payload)
+
+    def test_invalid_topic_keys(self):
+        """ Check that message with a 'bad' routing_key does not match the queue's binding_key. """
+
+        # We don't need the app to be running for this test.
+        self.app.terminate()
+
+        self.message = make_message()
+
+        ROOT_KEY = 'feeder'
+
+        # Set binding key for the queue that is created via setup_producer().
+        cfg = server.outgoing_cfg._replace(binding_key=ROOT_KEY+'.*')
+
+        with server.setup_producer(cfg=cfg) as producer:
+            routing_key = 'FEEDER' + '.test_invalid_topic_keys'
+            producer.publish(body=self.message, routing_key=routing_key, headers={'title_number': 'DN1'})
+            logger.debug(self.message)
+
+        # Attempt to consume message from outgoing exchange; should time out.
+        self.consume(cfg=cfg)
 
     def test_end_to_end(self, count=1):
         """ Send message from dummy "System Of Record", then consume and check it. """
