@@ -7,7 +7,7 @@ echo "export PATH=$PATH:/usr/local/bin" > /etc/profile.d/local_bin.sh
 
 source /etc/profile.d/local_bin.sh
 
-gem install --no-ri --no-rdoc puppet
+gem install --no-ri --no-rdoc puppet:3.7.5
 
 puppet module install garethr-erlang
 
