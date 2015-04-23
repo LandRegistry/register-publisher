@@ -3,6 +3,7 @@ import json
 import unittest
 import datetime
 import os
+import socket
 from multiprocessing import Process
 from application import server
 
@@ -277,7 +278,12 @@ class TestRegisterPublisher(unittest.TestCase):
             logger.debug(self.message)
 
         # Attempt to consume message from outgoing exchange; should time out.
-        self.consume(cfg=cfg)
+        try:
+            self.consume(cfg=cfg)
+        except socket.timeout:
+            pass
+        else:
+            raise
 
     def test_end_to_end(self, count=1):
         """ Send message from dummy "System Of Record", then consume and check it. """
