@@ -21,7 +21,7 @@ class Config(object):
     OUTGOING_QUEUE_HOSTNAME = os.getenv('OUTGOING_QUEUE_HOSTNAME', "amqp://mqpublisher:mqpublisherpassword@localhost:5672/")   # RabbitMQ IP address
 
     INCOMING_QUEUE = os.getenv('INCOMING_QUEUE', 'system_of_record')                # SOR to RP queue name
-    OUTGOING_QUEUE = os.getenv('OUTGOING_QUEUE', 'feeder')                          # Default outgoing queue name
+    OUTGOING_QUEUE = os.getenv('OUTGOING_QUEUE', 'register-publisher')                          # Default outgoing queue name
 
     # Queue binding keys: "Anything goes".
     INCOMING_KEY = os.getenv('INCOMING_KEY', '#')
