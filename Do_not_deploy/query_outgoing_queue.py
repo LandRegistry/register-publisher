@@ -14,9 +14,7 @@ def get_last_queue_message():
     connection = Connection(app.config['OUTGOING_QUEUE_HOSTNAME'])
 
     # Create/access a queue bound to the connection.
-    queue = Queue(app.config['OUTGOING_QUEUE'],
-                  exchange,
-                  routing_key=app.config['OUTGOING_QUEUE'])(connection)
+    queue = Queue(app.config['OUTGOING_QUEUE'], exchange, routing_key='#')(connection)
     queue.declare()
 
     message = queue.get()
