@@ -106,5 +106,5 @@ Activities to be logged:
 * Pulls from System of Record queue
 * Acknowledges pull
 * Pushes to the Register Publisher queue
-* Acknowledges successful receipt by Register Publisher queue
+* Acknowledges successful receipt by Register Publisher queue.
 
