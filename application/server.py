@@ -268,11 +268,13 @@ def run():
         logger.audit(make_log_msg(outgoing_push_msg, 'debug', get_message_header(message), remove_username_password(incoming_cfg.hostname)))
 
         ensure(producer.connection, producer, 'publish', body)
-        logger.audit("Push Acknowledged (implied): {}".format(message.delivery_tag))
+        acknowledge_push_message = "Push Acknowledged (implied): {}".format(message.delivery_tag)
+        logger.audit(make_log_msg(acknowledge_push_message, 'debug', get_message_header(message), remove_username_password(outgoing_cfg.hostname)))
 
         # Acknowledge message only after publish(); if that fails, message is still in queue.
         message.ack()
-        logger.audit("Acknowledged Pull: {}".format(message.delivery_tag))
+        acknowledge_pull_message = "Acknowledged Pull: {}".format(message.delivery_tag)
+        logger.audit(make_log_msg(acknowledge_pull_message, 'debug', get_message_header(message), remove_username_password(outgoing_cfg.hostname)))
 
 
     # Producer for outgoing exchange.
