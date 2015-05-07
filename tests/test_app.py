@@ -75,26 +75,30 @@ class TestRegisterPublisher(unittest.TestCase):
 
         logger.debug("reset")
 
-        with server.setup_connection(server.outgoing_cfg.hostname) as outgoing_connection:
+        try:
+            with server.setup_connection(server.outgoing_cfg.hostname) as outgoing_connection:
 
-            # Need a connection to delete the queues.
-            self.assertEqual(outgoing_connection.connected, True)
+                # Need a connection to delete the queues.
+                self.assertEqual(outgoing_connection.connected, True)
 
-            outgoing_channel = outgoing_connection.channel()
-            queue = server.setup_queue(outgoing_channel, cfg=server.outgoing_cfg)
-            queue.purge()
-            queue.delete()
+                outgoing_channel = outgoing_connection.channel()
+                queue = server.setup_queue(outgoing_channel, cfg=server.outgoing_cfg)
+                queue.purge()
+                queue.delete()
 
-        with server.setup_connection(server.incoming_cfg.hostname) as incoming_connection:
+            with server.setup_connection(server.incoming_cfg.hostname) as incoming_connection:
 
-            # Need a connection to delete the queues.
-            self.assertEqual(incoming_connection.connected, True)
+                # Need a connection to delete the queues.
+                self.assertEqual(incoming_connection.connected, True)
 
-            incoming_channel = incoming_connection.channel()
-            queue = server.setup_queue(incoming_channel, cfg=server.incoming_cfg)
-            queue.purge()
-            queue.delete()
+                incoming_channel = incoming_connection.channel()
+                queue = server.setup_queue(incoming_channel, cfg=server.incoming_cfg)
+                queue.purge()
+                queue.delete()
 
+        except Exception as e:
+            logger.error(e)
+            raise
 
     def setUp(self):
         """ Establish connection and other resources; prepare """
