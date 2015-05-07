@@ -2,6 +2,8 @@
 import json
 import unittest
 import datetime
+import os
+import socket
 from multiprocessing import Process
 from application import server
 
@@ -57,6 +59,8 @@ class TestRegisterPublisher(unittest.TestCase):
 
         with server.setup_consumer(cfg=cfg, callback=self.handle_message) as consumer:
 
+            logger.debug("cfg: {}".format(cfg))
+
             # 'consume' may be a misnomer here - it just initiates the consumption process, I believe.
             consumer.consume()
 
@@ -66,6 +70,7 @@ class TestRegisterPublisher(unittest.TestCase):
                 consumer.connection.drain_events(timeout=5)
             except Exception as e:
                 logger.error(e)
+                raise
             finally:
                 consumer.close()
 
@@ -107,9 +112,6 @@ class TestRegisterPublisher(unittest.TestCase):
 
         self.app = Application()
 
-        test_title = self.id().split(sep='.')[-1]
-        logger.info(test_title)
-
         # Ensure that message broker is alive, etc.
         self.reset()
 
@@ -119,6 +121,9 @@ class TestRegisterPublisher(unittest.TestCase):
         # Execute 'server.run()' as a separate process.
         self.app.start()
 
+        test_title = self.id().split(sep='.')[-1]
+        logger.info(test_title)
+
     def tearDown(self):
 
         logger.debug("setUp")
@@ -127,7 +132,8 @@ class TestRegisterPublisher(unittest.TestCase):
         self.app.join(timeout=5)
         self.app.terminate()
 
-        self.reset()
+        if os.getenv('LOG_THRESHOLD_LEVEL') != 'DEBUG':
+            self.reset()
 
     def test_incoming_queue(self):
         """ Basic check of 'incoming' message via default direct exchange """
@@ -138,7 +144,7 @@ class TestRegisterPublisher(unittest.TestCase):
         self.message = make_message()
 
         producer = server.setup_producer(cfg=server.incoming_cfg)
-        producer.publish(body=self.message, headers={'title_number': 'DN1'})
+        producer.publish(body=self.message, routing_key=server.incoming_cfg.queue, headers={'title_number': 'DN1'})
         logger.info("Put message, exchange: {}, {}".format(self.message, producer.exchange))
 
         producer.close()
@@ -155,7 +161,7 @@ class TestRegisterPublisher(unittest.TestCase):
         # Send a message to 'incoming' exchange - i.e. as if from SoR.
         with server.setup_producer(cfg=server.incoming_cfg) as producer:
 
-            producer.publish(body=self.message, headers={'title_number': 'DN1'})
+            producer.publish(body=self.message, routing_key=server.incoming_cfg.queue, headers={'title_number': 'DN1'})
 
             # Kill connection to broker.
             producer.connection.close()
@@ -194,7 +200,7 @@ class TestRegisterPublisher(unittest.TestCase):
 
         # Send a message to 'incoming' exchange - i.e. as if from SoR.
         with server.setup_producer(cfg=server.incoming_cfg) as producer:
-            producer.publish(body=self.message, headers={'title_number': 'DN1'})
+            producer.publish(body=self.message, routing_key=server.incoming_cfg.queue, headers={'title_number': 'DN1'})
             logger.debug(self.message)
 
         # Kill application; wait long enough for message to be stored.
@@ -207,26 +213,100 @@ class TestRegisterPublisher(unittest.TestCase):
 
         self.assertEqual(self.message, self.payload)
 
+    def test_default_topic_keys(self):
+        """ Check that message with a suitable routing_key matches the default binding_key. """
+
+        # We don't need the app to be running for this test.
+        self.app.terminate()
+
+        self.message = make_message()
+
+        ROOT_KEY = 'feeder'
+
+        # Use default binding key for the queue that is created via setup_producer().
+        cfg = server.outgoing_cfg
+
+        with server.setup_producer(cfg=cfg) as producer:
+            routing_key = ROOT_KEY + '.test_default_topic_keys'
+            producer.publish(body=self.message, routing_key=routing_key, headers={'title_number': 'DN1'})
+            logger.debug(self.message)
+
+        # Consume message from outgoing exchange.
+        self.consume(cfg=cfg)
+
+        self.assertEqual(self.message, self.payload)
+
+    def test_valid_topic_keys(self):
+        """ Check that message with a suitable routing_key matches corresponding binding_key. """
+
+        # We don't need the app to be running for this test.
+        self.app.terminate()
+
+        self.message = make_message()
+
+        ROOT_KEY = 'feeder'
+
+        # Set binding key for the queue that is created via setup_producer().
+        cfg = server.outgoing_cfg._replace(binding_key=ROOT_KEY+'.*')
+
+        with server.setup_producer(cfg=cfg) as producer:
+            routing_key = ROOT_KEY + '.test_valid_topic_keys'
+            producer.publish(body=self.message, routing_key=routing_key, headers={'title_number': 'DN1'})
+            logger.debug(self.message)
+
+        # Consume message from outgoing exchange.
+        self.consume(cfg=cfg)
+
+        self.assertEqual(self.message, self.payload)
+
+    def test_invalid_topic_keys(self):
+        """ Check that message with a 'bad' routing_key does not match the queue's binding_key. """
+
+        # We don't need the app to be running for this test.
+        self.app.terminate()
+
+        self.message = make_message()
+
+        ROOT_KEY = 'feeder'
+
+        # Set binding key for the queue that is created via setup_producer().
+        cfg = server.outgoing_cfg._replace(binding_key=ROOT_KEY+'.*')
+
+        with server.setup_producer(cfg=cfg) as producer:
+            routing_key = 'FEEDER' + '.test_invalid_topic_keys'
+            producer.publish(body=self.message, routing_key=routing_key, headers={'title_number': 'DN1'})
+            logger.debug(self.message)
+
+        # Attempt to consume message from outgoing exchange; should time out.
+        try:
+            self.consume(cfg=cfg)
+        except socket.timeout:
+            pass
+        else:
+            raise
+
     def test_end_to_end(self, count=1):
         """ Send message from dummy "System Of Record", then consume and check it. """
 
         # Send a message to 'incoming' exchange - i.e. as if from SoR.
+        # import pdb; pdb.set_trace()
         with server.setup_producer(cfg=server.incoming_cfg) as producer:
             for n in range(count):
 
                 # Message to be sent.
                 self.message = make_message()
 
-                producer.publish(body=self.message, headers={'title_number': 'DN1'})
+                producer.publish(body=self.message, routing_key=server.incoming_cfg.queue, headers={'title_number': 'DN1'})
                 logger.debug(self.message)
+
+                # Wait long enough message to be processed.
+                self.app.join(timeout=1)
 
                 # Consume message from outgoing exchange, via callback.
                 self.consume(cfg=server.outgoing_cfg)
 
                 self.assertEqual(self.message, self.payload)
 
-        # Wait long enough for all messages to be processed.
-        self.app.join(timeout=(count // 10) + 1)
 
     def test_multiple_end_to_end(self):
         """ Check many messages. """

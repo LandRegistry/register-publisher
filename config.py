@@ -16,23 +16,28 @@ class Config(object):
     # Kombu.
     MAX_RETRIES = os.getenv('MAX_RETRIES', 10)                                      # Maximum 'ensure' limit.
 
-    # AMQP.
+    # AMQP. Note that the Outgoing Queue does not need to be named but this may be useful for monitoring etc.
     INCOMING_QUEUE_HOSTNAME = os.getenv('INCOMING_QUEUE_HOSTNAME', "amqp://mqpublisher:mqpublisherpassword@localhost:5672/")   # RabbitMQ IP address
     OUTGOING_QUEUE_HOSTNAME = os.getenv('OUTGOING_QUEUE_HOSTNAME', "amqp://mqpublisher:mqpublisherpassword@localhost:5672/")   # RabbitMQ IP address
 
     INCOMING_QUEUE = os.getenv('INCOMING_QUEUE', 'system_of_record')                # SOR to RP queue name
-    OUTGOING_QUEUE = os.getenv('OUTGOING_QUEUE', 'register_publisher')              # Default outgoing queue name
+    OUTGOING_QUEUE = os.getenv('OUTGOING_QUEUE', 'register-publisher')                          # Default outgoing queue name
+
+    # Queue binding keys: "Anything goes".
+    INCOMING_KEY = os.getenv('INCOMING_KEY', '#')
+    OUTGOING_KEY = os.getenv('OUTGOING_KEY', '#')
 
     # RabbitMQ Exchange default values:
     #   delivery_mode: '2' (persistent messages)
     #   durable: True (exchange remains 'active' on server re-start)
+    # N.B.: 'name' is blank ("direct" type) by default, so it is required for non-direct types of exchange.
     INCOMING_EXCHANGE = kombu.Exchange(type="direct")
-    OUTGOING_EXCHANGE = kombu.Exchange(type="fanout")
+    OUTGOING_EXCHANGE = kombu.Exchange(type="topic", name="amq.topic")
 
-    # Collections
-    Configuration = namedtuple("Configuration", ['hostname', 'exchange', 'queue'])
-    INCOMING_CFG = Configuration(hostname=INCOMING_QUEUE_HOSTNAME, exchange=INCOMING_EXCHANGE, queue=INCOMING_QUEUE)
-    OUTGOING_CFG = Configuration(hostname=OUTGOING_QUEUE_HOSTNAME, exchange=OUTGOING_EXCHANGE, queue=OUTGOING_QUEUE)
+    # Collections: Incoming for a Consumer, Outgoing for a Producer.
+    Configuration = namedtuple("Configuration", ['hostname', 'exchange', 'queue', 'binding_key'])
+    INCOMING_CFG = Configuration(INCOMING_QUEUE_HOSTNAME, INCOMING_EXCHANGE, INCOMING_QUEUE, INCOMING_KEY)
+    OUTGOING_CFG = Configuration(OUTGOING_QUEUE_HOSTNAME, OUTGOING_EXCHANGE, OUTGOING_QUEUE, OUTGOING_KEY)
 
 
 class DevelopmentConfig(Config):

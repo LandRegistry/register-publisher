@@ -25,7 +25,6 @@ with connection as conn:
     #: Publish the message using the json serializer (which is the default),
     #: and zlib compression. The kombu consumer will automatically detect
     #: encoding, serialization and compression used and decode accordingly.
-    producer.publish({'hello': 'world'}, exchange=exchange, routing_key=queue.routing_key, serializer='json',
-                     headers={'title_number': 'DN1'})
+    producer.publish({'hello': 'world'}, exchange=exchange, routing_key=queue.routing_key,  serializer='json', headers={'title_number': 'DN1'})
 
 
