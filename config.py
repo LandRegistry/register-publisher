@@ -49,6 +49,9 @@ class TestConfig(Config):
 class PreviewConfig(Config):
     LOG_THRESHOLD_LEVEL = os.getenv('LOG_THRESHOLD_LEVEL', 'INFO')
 
+class ReleaseConfig(Config):
+    LOG_THRESHOLD_LEVEL = os.getenv('LOG_THRESHOLD_LEVEL', 'INFO')
+
 class PreProductionConfig(Config):
     LOG_THRESHOLD_LEVEL = os.getenv('LOG_THRESHOLD_LEVEL', 'INFO')
 
