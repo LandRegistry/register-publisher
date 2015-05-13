@@ -1,4 +1,4 @@
-# Register publisher
+## Register publisher
 Beta version of the "Register Publisher".
 
 This service will forward messages from the "System of Record" queue to the "feeder" queue.
