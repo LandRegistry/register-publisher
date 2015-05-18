@@ -2,6 +2,7 @@
 
 dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd $dir
+source ~/venvs/register-publisher/bin/activate
 
 #Set environment variable in supervisord according to deploying environment (default to development)
 case "$DEPLOY_ENVIRONMENT" in
