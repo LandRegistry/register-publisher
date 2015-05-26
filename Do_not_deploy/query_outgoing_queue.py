@@ -33,7 +33,7 @@ def get_last_queue_message():
 def remove_all_messages():
     while True:
         queue_message = get_last_queue_message()
-        if queue_message == 'no message':
+        if queue_message == ('no message', 404):
             break
     return "done", 202
 
