@@ -24,7 +24,7 @@ def get_last_queue_message():
         message.ack() #acknowledges message, ensuring its removal.
         return signature
     else:
-        return "no message"
+        return "no message", 404
 
 
 
