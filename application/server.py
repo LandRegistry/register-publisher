@@ -30,7 +30,6 @@ More importantly perhaps, this package acts as a proxy publisher for the System 
 
 """
 
-# Flask is invoked here purely to get the configuration values in a consistent manner!
 app = Flask(__name__)
 app.config.from_object(os.getenv('SETTINGS', "config.DevelopmentConfig"))
 
@@ -317,3 +316,8 @@ def remove_username_password(endpoint_string):
 
 if __name__ == "__main__":
     print("This module should be executed as a separate Python process")
+
+
+@app.route("/outgoingcount")
+def outgoing_count():
+    return str(100)
