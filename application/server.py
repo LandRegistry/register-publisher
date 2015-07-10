@@ -320,6 +320,15 @@ if __name__ == "__main__":
 
 @app.route("/outgoingcount")
 def outgoing_count():
+    jobs = get_outgoing_count()
+    return jobs, 200
+
+def get_outgoing_count():
     channel = setup_channel(outgoing_cfg.hostname, exchange=outgoing_cfg.exchange)
     name, jobs, consumers = channel.queue_declare(queue=outgoing_cfg.queue, passive=True)
     return str(jobs)
+
+@app.route("/")
+def index():
+    return 'register publisher flask service running', 200
+
