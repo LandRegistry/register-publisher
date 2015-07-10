@@ -59,6 +59,12 @@ sudo supervisorctl stop register-publisher
 ./run.sh
 ```
 
+##Query the outgoing queue count
+
+```
+curl http://0.0.0.0:5009/outgoingcount
+```
+
 ##how to run tests
 In virtual machine ('vagrant'):
 * use IP address of host m/c (for Windows, at least).
