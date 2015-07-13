@@ -320,17 +320,17 @@ if __name__ == "__main__":
 
 @app.route("/outgoingcount")
 def outgoing_count():
-    jobs = get_queue_count(outgoing_cfg.queue)
+    jobs = get_queue_count(outgoing_cfg)
     return jobs, 200
 
 @app.route("/incomingcount")
 def incoming_count():
-    jobs = get_queue_count(incoming_cfg.queue)
+    jobs = get_queue_count(incoming_cfg)
     return jobs, 200
 
-def get_queue_count(queue_name):
-    channel = setup_channel(outgoing_cfg.hostname, exchange=outgoing_cfg.exchange)
-    name, jobs, consumers = channel.queue_declare(queue=queue_name, passive=True)
+def get_queue_count(config):
+    channel = setup_channel(config.hostname, exchange=config.exchange)
+    name, jobs, consumers = channel.queue_declare(queue=config.queue, passive=True)
     return str(jobs)
 
 @app.route("/")
