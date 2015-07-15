@@ -311,7 +311,7 @@ class TestRegisterPublisher(unittest.TestCase):
     def test_multiple_end_to_end(self):
         """ Check many messages. """
 
-        self.test_end_to_end(100)
+        self.test_end_to_end(10)
 
 if __name__ == '__main__':
     unittest.main()

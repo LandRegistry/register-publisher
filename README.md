@@ -94,7 +94,7 @@ service rabbitmq-server start
 Add a test message
 
 ```
-rabbitmqadmin publish exchange=amq.default routing_key=system_of_record payload="hello, world"
+rabbitmqadmin publish exchange=amq.default routing_key=register-publisher payload="hello, world"
 ```
 
 ## Audit Requirements
