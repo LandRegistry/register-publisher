@@ -30,7 +30,6 @@ More importantly perhaps, this package acts as a proxy publisher for the System 
 
 """
 
-# Flask is invoked here purely to get the configuration values in a consistent manner!
 app = Flask(__name__)
 app.config.from_object(os.getenv('SETTINGS', "config.DevelopmentConfig"))
 
@@ -317,3 +316,24 @@ def remove_username_password(endpoint_string):
 
 if __name__ == "__main__":
     print("This module should be executed as a separate Python process")
+
+
+@app.route("/outgoingcount")
+def outgoing_count():
+    jobs = get_queue_count(outgoing_cfg)
+    return jobs, 200
+
+@app.route("/incomingcount")
+def incoming_count():
+    jobs = get_queue_count(incoming_cfg)
+    return jobs, 200
+
+def get_queue_count(config):
+    channel = setup_channel(config.hostname, exchange=config.exchange)
+    name, jobs, consumers = channel.queue_declare(queue=config.queue, passive=True)
+    return str(jobs)
+
+@app.route("/")
+def index():
+    return 'register publisher flask service running', 200
+

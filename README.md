@@ -59,6 +59,15 @@ sudo supervisorctl stop register-publisher
 ./run.sh
 ```
 
+##Query the queue counts
+
+```
+curl http://0.0.0.0:5009/outgoingcount
+```
+```
+curl http://0.0.0.0:5009/incomingcount
+```
+
 ##how to run tests
 In virtual machine ('vagrant'):
 * use IP address of host m/c (for Windows, at least).
@@ -95,6 +104,9 @@ Add a test message
 
 ```
 rabbitmqadmin publish exchange=amq.default routing_key=register-publisher payload="hello, world"
+```
+```
+rabbitmqadmin publish exchange=amq.default routing_key=system_of_record payload="hello, world"
 ```
 
 ## Audit Requirements
