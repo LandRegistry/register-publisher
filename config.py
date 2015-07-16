@@ -34,10 +34,15 @@ class Config(object):
     INCOMING_EXCHANGE = kombu.Exchange(type="direct")
     OUTGOING_EXCHANGE = kombu.Exchange(type="topic", name="amq.topic")
 
+    INCOMING_COUNT_EXCHANGE = kombu.Exchange(type="direct")
+    OUTGOING_COUNT_EXCHANGE = kombu.Exchange(type="direct")
+
     # Collections: Incoming for a Consumer, Outgoing for a Producer.
     Configuration = namedtuple("Configuration", ['hostname', 'exchange', 'queue', 'binding_key'])
     INCOMING_CFG = Configuration(INCOMING_QUEUE_HOSTNAME, INCOMING_EXCHANGE, INCOMING_QUEUE, INCOMING_KEY)
     OUTGOING_CFG = Configuration(OUTGOING_QUEUE_HOSTNAME, OUTGOING_EXCHANGE, OUTGOING_QUEUE, OUTGOING_KEY)
+    INCOMING_COUNT_CFG = Configuration(INCOMING_QUEUE_HOSTNAME, INCOMING_COUNT_EXCHANGE, INCOMING_QUEUE, INCOMING_KEY)
+    OUTGOING_COUNT_CFG = Configuration(OUTGOING_QUEUE_HOSTNAME, OUTGOING_COUNT_EXCHANGE, OUTGOING_QUEUE, OUTGOING_KEY)
 
 
 class DevelopmentConfig(Config):
