@@ -333,7 +333,10 @@ def incoming_count():
 
 def get_queue_count(config):
     channel = setup_channel(config.hostname, exchange=config.exchange)
-    name, jobs, consumers = channel.queue_declare(queue=config.queue, passive=True)
+    try:
+        name, jobs, consumers = channel.queue_declare(queue=config.queue, passive=True)
+    finally:
+        channel.close()
     return str(jobs)
 
 @app.route("/")
