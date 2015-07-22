@@ -36,6 +36,9 @@ app.config.from_object(os.getenv('SETTINGS', "config.DevelopmentConfig"))
 incoming_cfg = app.config['INCOMING_CFG']
 outgoing_cfg = app.config['OUTGOING_CFG']
 
+incoming_count_cfg = app.config['INCOMING_COUNT_CFG']
+outgoing_count_cfg = app.config['OUTGOING_COUNT_CFG']
+
 # Constraints, etc.
 MAX_RETRIES = app.config['MAX_RETRIES']
 
@@ -320,12 +323,12 @@ if __name__ == "__main__":
 
 @app.route("/outgoingcount")
 def outgoing_count():
-    jobs = get_queue_count(outgoing_cfg)
+    jobs = get_queue_count(outgoing_count_cfg)
     return jobs, 200
 
 @app.route("/incomingcount")
 def incoming_count():
-    jobs = get_queue_count(incoming_cfg)
+    jobs = get_queue_count(incoming_count_cfg)
     return jobs, 200
 
 def get_queue_count(config):
