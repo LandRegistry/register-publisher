@@ -32,7 +32,7 @@ class Config(object):
     #   durable: True (exchange remains 'active' on server re-start)
     # N.B.: 'name' is blank ("direct" type) by default, so it is required for non-direct types of exchange.
     INCOMING_EXCHANGE = kombu.Exchange(type="direct")
-    OUTGOING_EXCHANGE = kombu.Exchange(type="topic", name="amq.topic")
+    OUTGOING_EXCHANGE = kombu.Exchange(type="fanout", name="amq.fanout")
 
     INCOMING_COUNT_EXCHANGE = kombu.Exchange(type="direct")
     OUTGOING_COUNT_EXCHANGE = kombu.Exchange(type="direct")

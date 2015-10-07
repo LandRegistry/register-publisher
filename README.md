@@ -54,6 +54,17 @@ vagrant ssh
 ```
 Supervisord has been configured to launch this application on start up, but if you want to stop Supervisord running it and run it yourself then:
 
+Start the virtualenv for register publisher
+```
+workon registerpublisher
+```
+or
+
+```
+source ~/venvs/register-publisher/bin/activate
+```
+then start the app with
+
 ```
 sudo supervisorctl stop register-publisher
 ./run.sh
@@ -107,6 +118,14 @@ rabbitmqadmin publish exchange=amq.default routing_key=register-publisher payloa
 ```
 ```
 rabbitmqadmin publish exchange=amq.default routing_key=system_of_record payload="hello, world"
+```
+
+Create the test queue
+
+Firstly start the virtualenv (see how above). Then 
+
+```
+python Do_not_deploytest_queue.py
 ```
 
 ## Audit Requirements
