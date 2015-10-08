@@ -34,10 +34,12 @@ app = Flask(__name__)
 app.config.from_object(os.getenv('SETTINGS', "config.DevelopmentConfig"))
 
 incoming_cfg = app.config['INCOMING_CFG']
-outgoing_cfg = app.config['OUTGOING_CFG']
+outgoing_fanout_cfg = app.config['OUTGOING_FANOUT_CFG']
+outgoing_topic_cfg = app.config['OUTGOING_TOPIC_CFG']
 
 incoming_count_cfg = app.config['INCOMING_COUNT_CFG']
 outgoing_count_cfg = app.config['OUTGOING_COUNT_CFG']
+
 
 # Constraints, etc.
 MAX_RETRIES = app.config['MAX_RETRIES']
@@ -122,8 +124,9 @@ def setup_channel(queue_hostname, exchange=None, connection=None):
     return channel
 
 
-# Get Producer, for 'outgoing' exchange and JSON "serializer" by default.
-def setup_producer(cfg=outgoing_cfg, serializer='json', set_queue=True):
+# Get Fanout Producer, for 'outgoing' exchange and JSON "serializer" by default.
+# Bulk migrations and normal register updates will use this producer to feed to all pots.
+def setup_producer(cfg=outgoing_fanout_cfg, serializer='json', set_queue=True):
     """ Create a Producer, with a corresponding queue if required. """
 
     assert type(set_queue) is bool
@@ -139,6 +142,7 @@ def setup_producer(cfg=outgoing_cfg, serializer='json', set_queue=True):
         queue = setup_queue(channel, cfg=cfg)
 
     # Publish message; the default message *routing* key is the outgoing queue name.
+
     producer = kombu.Producer(channel, exchange=cfg.exchange, routing_key=cfg.queue, serializer=serializer)
 
     logger.debug('channel_id: {}'.format(producer.channel.channel_id))
@@ -269,18 +273,22 @@ def run():
         outgoing_push_msg = " Push to outgoing queue: {}".format(message.delivery_info)
         logger.audit(make_log_msg(outgoing_push_msg, 'debug', get_message_header(message), remove_username_password(incoming_cfg.hostname)))
 
-        ensure(producer.connection, producer, 'publish', body)
+        routing_list = ['test_queue_1', 'test_queue_3', 'test_queue_4']
+
+
+        ensure(topic_producer.connection, topic_producer, 'publish', body, headers={'CC': routing_list})
         acknowledge_push_message = "Push Acknowledged (implied): {}".format(message.delivery_tag)
-        logger.audit(make_log_msg(acknowledge_push_message, 'debug', get_message_header(message), remove_username_password(outgoing_cfg.hostname)))
+        logger.audit(make_log_msg(acknowledge_push_message, 'debug', get_message_header(message), remove_username_password(outgoing_fanout_cfg.hostname)))
 
         # Acknowledge message only after publish(); if that fails, message is still in queue.
         message.ack()
         acknowledge_pull_message = "Acknowledged Pull: {}".format(message.delivery_tag)
-        logger.audit(make_log_msg(acknowledge_pull_message, 'debug', get_message_header(message), remove_username_password(outgoing_cfg.hostname)))
+        logger.audit(make_log_msg(acknowledge_pull_message, 'debug', get_message_header(message), remove_username_password(outgoing_fanout_cfg.hostname)))
 
 
-    # Producer for outgoing exchange.
-    producer = setup_producer()
+    # Producer for outgoing exchange.  Fanout for most things.  Topic for particular feeder targets.
+    fanout_producer = setup_producer(outgoing_fanout_cfg, 'json', True)
+    topic_producer = setup_producer(outgoing_topic_cfg, 'json', True)
 
     # Create consumer with incoming exchange/queue.
     consumer = setup_consumer(callback=process_message)

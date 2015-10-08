@@ -9,14 +9,22 @@ os.environ['SETTINGS'] = "config.DevelopmentConfig"
 app = flask.Flask(__name__)
 app.config.from_object(os.environ.get('SETTINGS'))
 
-direct_exchange = kombu.Exchange(type="direct")
-fanout_exchange = kombu.Exchange(type="topic", name="amq.fanout")
+topic_exchange = kombu.Exchange(type="topic", name="amq.topic")
 
 connection = kombu.Connection(app.config['OUTGOING_QUEUE_HOSTNAME'])
 
-queue = kombu.Queue('test_queue', direct_exchange, routing_key='test_queue')(connection)
+queue = kombu.Queue('test_queue_1', topic_exchange, routing_key='test_queue_1')(connection)
 queue.declare()
-queue.bind_to(fanout_exchange, '#')
+
+queue = kombu.Queue('test_queue_2', topic_exchange, routing_key='test_queue_2')(connection)
+queue.declare()
+
+queue = kombu.Queue('test_queue_3', topic_exchange, routing_key='test_queue_3')(connection)
+queue.declare()
+
+queue = kombu.Queue('test_queue_4', topic_exchange, routing_key='test_queue_4')(connection)
+queue.declare()
+
 
 message = queue.get()
 if message:

@@ -1,0 +1,32 @@
+ERROR      2015-10-07 10:10:54,838  - RP                   /home/vagrant/srv/register-publisher/application/server.py   #219   get_message_header   message header not retrieved for message queue address is: amqp://mqpublisher:mqpublisherpassword@localhost:5672/.  Signed in as: vagrant.  Message header is: no title.  Logged at: register-publisher/logs. 
+None
+AUDIT      2015-10-07 10:10:54,841  - RP.run               /home/vagrant/srv/register-publisher/application/server.py   #267   process_message       Pull from incoming queue: {'delivery_tag': 1, 'consumer_tag': '1', 'routing_key': 'feeder.*', 'redelivered': False, 'exchange': 'amq.topic'} queue address is: amqp://localhost:5672/.  Signed in as: vagrant.  Message header is: message header not retrieved for message'application_headers'.  Logged at: register-publisher/logs. 
+None
+ERROR      2015-10-07 10:10:54,842  - RP                   /home/vagrant/srv/register-publisher/application/server.py   #219   get_message_header   message header not retrieved for message queue address is: amqp://mqpublisher:mqpublisherpassword@localhost:5672/.  Signed in as: vagrant.  Message header is: no title.  Logged at: register-publisher/logs. 
+None
+AUDIT      2015-10-07 10:10:54,843  - RP.run               /home/vagrant/srv/register-publisher/application/server.py   #271   process_message       Push to outgoing queue: {'delivery_tag': 1, 'consumer_tag': '1', 'routing_key': 'feeder.*', 'redelivered': False, 'exchange': 'amq.topic'} queue address is: amqp://localhost:5672/.  Signed in as: vagrant.  Message header is: message header not retrieved for message'application_headers'.  Logged at: register-publisher/logs. 
+None
+ERROR      2015-10-07 10:10:54,846  - RP                   /home/vagrant/srv/register-publisher/application/server.py   #219   get_message_header   message header not retrieved for message queue address is: amqp://mqpublisher:mqpublisherpassword@localhost:5672/.  Signed in as: vagrant.  Message header is: no title.  Logged at: register-publisher/logs. 
+None
+AUDIT      2015-10-07 10:10:54,847  - RP.run               /home/vagrant/srv/register-publisher/application/server.py   #275   process_message      Push Acknowledged (implied): 1 queue address is: amqp://localhost:5672/.  Signed in as: vagrant.  Message header is: message header not retrieved for message'application_headers'.  Logged at: register-publisher/logs. 
+None
+ERROR      2015-10-07 10:10:54,848  - RP                   /home/vagrant/srv/register-publisher/application/server.py   #219   get_message_header   message header not retrieved for message queue address is: amqp://mqpublisher:mqpublisherpassword@localhost:5672/.  Signed in as: vagrant.  Message header is: no title.  Logged at: register-publisher/logs. 
+None
+AUDIT      2015-10-07 10:10:54,849  - RP.run               /home/vagrant/srv/register-publisher/application/server.py   #280   process_message      Acknowledged Pull: 1 queue address is: amqp://localhost:5672/.  Signed in as: vagrant.  Message header is: message header not retrieved for message'application_headers'.  Logged at: register-publisher/logs. 
+None
+ERROR      2015-10-07 10:11:42,724  - RP                   /home/vagrant/srv/register-publisher/application/server.py   #219   get_message_header   message header not retrieved for message queue address is: amqp://mqpublisher:mqpublisherpassword@localhost:5672/.  Signed in as: vagrant.  Message header is: no title.  Logged at: register-publisher/logs. 
+None
+AUDIT      2015-10-07 10:11:42,726  - RP.run               /home/vagrant/srv/register-publisher/application/server.py   #267   process_message       Pull from incoming queue: {'delivery_tag': 2, 'consumer_tag': '1', 'routing_key': 'system_of_record', 'redelivered': False, 'exchange': 'amq.topic'} queue address is: amqp://localhost:5672/.  Signed in as: vagrant.  Message header is: message header not retrieved for message'application_headers'.  Logged at: register-publisher/logs. 
+None
+ERROR      2015-10-07 10:11:42,727  - RP                   /home/vagrant/srv/register-publisher/application/server.py   #219   get_message_header   message header not retrieved for message queue address is: amqp://mqpublisher:mqpublisherpassword@localhost:5672/.  Signed in as: vagrant.  Message header is: no title.  Logged at: register-publisher/logs. 
+None
+AUDIT      2015-10-07 10:11:42,728  - RP.run               /home/vagrant/srv/register-publisher/application/server.py   #271   process_message       Push to outgoing queue: {'delivery_tag': 2, 'consumer_tag': '1', 'routing_key': 'system_of_record', 'redelivered': False, 'exchange': 'amq.topic'} queue address is: amqp://localhost:5672/.  Signed in as: vagrant.  Message header is: message header not retrieved for message'application_headers'.  Logged at: register-publisher/logs. 
+None
+ERROR      2015-10-07 10:11:42,729  - RP                   /home/vagrant/srv/register-publisher/application/server.py   #219   get_message_header   message header not retrieved for message queue address is: amqp://mqpublisher:mqpublisherpassword@localhost:5672/.  Signed in as: vagrant.  Message header is: no title.  Logged at: register-publisher/logs. 
+None
+AUDIT      2015-10-07 10:11:42,730  - RP.run               /home/vagrant/srv/register-publisher/application/server.py   #275   process_message      Push Acknowledged (implied): 2 queue address is: amqp://localhost:5672/.  Signed in as: vagrant.  Message header is: message header not retrieved for message'application_headers'.  Logged at: register-publisher/logs. 
+None
+ERROR      2015-10-07 10:11:42,731  - RP                   /home/vagrant/srv/register-publisher/application/server.py   #219   get_message_header   message header not retrieved for message queue address is: amqp://mqpublisher:mqpublisherpassword@localhost:5672/.  Signed in as: vagrant.  Message header is: no title.  Logged at: register-publisher/logs. 
+None
+AUDIT      2015-10-07 10:11:42,732  - RP.run               /home/vagrant/srv/register-publisher/application/server.py   #280   process_message      Acknowledged Pull: 2 queue address is: amqp://localhost:5672/.  Signed in as: vagrant.  Message header is: message header not retrieved for message'application_headers'.  Logged at: register-publisher/logs. 
+None

@@ -32,7 +32,8 @@ class Config(object):
     #   durable: True (exchange remains 'active' on server re-start)
     # N.B.: 'name' is blank ("direct" type) by default, so it is required for non-direct types of exchange.
     INCOMING_EXCHANGE = kombu.Exchange(type="direct")
-    OUTGOING_EXCHANGE = kombu.Exchange(type="fanout", name="amq.fanout")
+    OUTGOING_FANOUT_EXCHANGE = kombu.Exchange(type="fanout", name="amq.fanout")
+    OUTGOING_TOPIC_EXCHANGE = kombu.Exchange(type="topic", name="amq.topic")
 
     INCOMING_COUNT_EXCHANGE = kombu.Exchange(type="direct")
     OUTGOING_COUNT_EXCHANGE = kombu.Exchange(type="direct")
@@ -40,7 +41,8 @@ class Config(object):
     # Collections: Incoming for a Consumer, Outgoing for a Producer.
     Configuration = namedtuple("Configuration", ['hostname', 'exchange', 'queue', 'binding_key'])
     INCOMING_CFG = Configuration(INCOMING_QUEUE_HOSTNAME, INCOMING_EXCHANGE, INCOMING_QUEUE, INCOMING_KEY)
-    OUTGOING_CFG = Configuration(OUTGOING_QUEUE_HOSTNAME, OUTGOING_EXCHANGE, OUTGOING_QUEUE, OUTGOING_KEY)
+    OUTGOING_FANOUT_CFG = Configuration(OUTGOING_QUEUE_HOSTNAME, OUTGOING_FANOUT_EXCHANGE, OUTGOING_QUEUE, OUTGOING_KEY)
+    OUTGOING_TOPIC_CFG = Configuration(OUTGOING_QUEUE_HOSTNAME, OUTGOING_TOPIC_EXCHANGE, OUTGOING_QUEUE, OUTGOING_KEY)
     INCOMING_COUNT_CFG = Configuration(INCOMING_QUEUE_HOSTNAME, INCOMING_COUNT_EXCHANGE, INCOMING_QUEUE, INCOMING_KEY)
     OUTGOING_COUNT_CFG = Configuration(OUTGOING_QUEUE_HOSTNAME, OUTGOING_COUNT_EXCHANGE, OUTGOING_QUEUE, OUTGOING_KEY)
 
