@@ -81,13 +81,13 @@ class TestRegisterPublisher(unittest.TestCase):
         logger.debug("reset")
 
         try:
-            with server.setup_connection(server.outgoing_cfg.hostname) as outgoing_connection:
+            with server.setup_connection(server.outgoing_fanout_cfg.hostname) as outgoing_connection:
 
                 # Need a connection to delete the queues.
                 self.assertEqual(outgoing_connection.connected, True)
 
                 outgoing_channel = outgoing_connection.channel()
-                queue = server.setup_queue(outgoing_channel, cfg=server.outgoing_cfg)
+                queue = server.setup_queue(outgoing_channel, cfg=server.outgoing_fanout_cfg)
                 queue.purge()
                 queue.delete()
 
@@ -170,7 +170,7 @@ class TestRegisterPublisher(unittest.TestCase):
         self.app.join(timeout=5)
 
         # Consume message from outgoing exchange; this will establish another connection.
-        self.consume(cfg=server.outgoing_cfg)
+        self.consume(cfg=server.outgoing_fanout_cfg)
 
         self.assertEqual(self.message, self.payload)
 
@@ -189,7 +189,7 @@ class TestRegisterPublisher(unittest.TestCase):
         self.app.start()
 
         # Consume message from outgoing exchange.
-        self.consume(cfg=server.outgoing_cfg)
+        self.consume(cfg=server.outgoing_fanout_cfg)
 
         self.assertEqual(self.message, self.payload)
 
@@ -209,7 +209,7 @@ class TestRegisterPublisher(unittest.TestCase):
         self.app.terminate()
 
         # Consume message from outgoing exchange.
-        self.consume(cfg=server.outgoing_cfg)
+        self.consume(cfg=server.outgoing_fanout_cfg)
 
         self.assertEqual(self.message, self.payload)
 
@@ -221,13 +221,13 @@ class TestRegisterPublisher(unittest.TestCase):
 
         self.message = make_message()
 
-        ROOT_KEY = 'feeder'
+        ROOT_KEY = 'register-publisher'
 
         # Use default binding key for the queue that is created via setup_producer().
-        cfg = server.outgoing_cfg
+        cfg = server.outgoing_topic_cfg
 
         with server.setup_producer(cfg=cfg) as producer:
-            routing_key = ROOT_KEY + '.test_default_topic_keys'
+            routing_key = ROOT_KEY
             producer.publish(body=self.message, routing_key=routing_key, headers={'title_number': 'DN1'})
             logger.debug(self.message)
 
@@ -247,7 +247,7 @@ class TestRegisterPublisher(unittest.TestCase):
         ROOT_KEY = 'feeder'
 
         # Set binding key for the queue that is created via setup_producer().
-        cfg = server.outgoing_cfg._replace(binding_key=ROOT_KEY+'.*')
+        cfg = server.outgoing_topic_cfg._replace(binding_key=ROOT_KEY+'.*')
 
         with server.setup_producer(cfg=cfg) as producer:
             routing_key = ROOT_KEY + '.test_valid_topic_keys'
@@ -270,7 +270,7 @@ class TestRegisterPublisher(unittest.TestCase):
         ROOT_KEY = 'feeder'
 
         # Set binding key for the queue that is created via setup_producer().
-        cfg = server.outgoing_cfg._replace(binding_key=ROOT_KEY+'.*')
+        cfg = server.outgoing_topic_cfg._replace(binding_key=ROOT_KEY+'.*')
 
         with server.setup_producer(cfg=cfg) as producer:
             routing_key = 'FEEDER' + '.test_invalid_topic_keys'
@@ -285,7 +285,7 @@ class TestRegisterPublisher(unittest.TestCase):
         else:
             raise
 
-    def test_end_to_end(self, count=1):
+    def test_fanout_end_to_end(self, count=1):
         """ Send message from dummy "System Of Record", then consume and check it. """
 
         # Send a message to 'incoming' exchange - i.e. as if from SoR.
@@ -303,15 +303,38 @@ class TestRegisterPublisher(unittest.TestCase):
                 self.app.join(timeout=1)
 
                 # Consume message from outgoing exchange, via callback.
-                self.consume(cfg=server.outgoing_cfg)
+                self.consume(cfg=server.outgoing_fanout_cfg)
 
                 self.assertEqual(self.message, self.payload)
+
+    def test_topic_end_to_end(self, count=1):
+        """ Send message from dummy "System Of Record", then consume and check it. Checks that the routing key from the header is used"""
+
+        # Send a message to 'incoming' exchange - i.e. as if from SoR.
+        # import pdb; pdb.set_trace()
+        with server.setup_producer(cfg=server.incoming_cfg) as producer:
+            for n in range(count):
+
+                # Message to be sent.
+                self.message = make_message()
+
+                producer.publish(body=self.message, routing_key=server.incoming_cfg.queue, headers={'title_number': 'DN1', 'routes': ['register-publisher']})
+                logger.debug(self.message)
+
+                # Wait long enough message to be processed.
+                self.app.join(timeout=1)
+
+                # Consume message from outgoing exchange, via callback.
+                self.consume(cfg=server.outgoing_topic_cfg)
+
+                self.assertEqual(self.message, self.payload)
+
 
 
     def test_multiple_end_to_end(self):
         """ Check many messages. """
 
-        self.test_end_to_end(10)
+        self.test_fanout_end_to_end(10)
 
 if __name__ == '__main__':
     unittest.main()

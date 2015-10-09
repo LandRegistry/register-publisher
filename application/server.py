@@ -12,6 +12,7 @@ from flask import Flask
 from kombu.common import maybe_declare
 from amqp import AccessRefused
 from python_logging.setup_logging import setup_logging
+import json
 
 
 """
@@ -269,16 +270,20 @@ def run():
         pull_message = " Pull from incoming queue: {}".format(message.delivery_info)
         logger.audit(make_log_msg(pull_message, 'debug', get_message_header(message), remove_username_password(incoming_cfg.hostname)))
 
-        # Forward message to outgoing exchange, with retry management.
         outgoing_push_msg = " Push to outgoing queue: {}".format(message.delivery_info)
         logger.audit(make_log_msg(outgoing_push_msg, 'debug', get_message_header(message), remove_username_password(incoming_cfg.hostname)))
+        # Forward message to outgoing exchange, with retry management.
+        # if routes have been supplied in header, publish to these with the topic exchange.
+        if 'routes' in get_message_header(message):
+            routing_list = get_message_header(message)['routes']
+            ensure(topic_producer.connection, topic_producer, 'publish', body, headers={'CC': routing_list})
+        else:
+            # otherwise send to everything with the fanout exchange.
+            ensure(fanout_producer.connection, fanout_producer, 'publish', body)
 
-        routing_list = ['test_queue_1', 'test_queue_3', 'test_queue_4']
-
-
-        ensure(topic_producer.connection, topic_producer, 'publish', body, headers={'CC': routing_list})
         acknowledge_push_message = "Push Acknowledged (implied): {}".format(message.delivery_tag)
         logger.audit(make_log_msg(acknowledge_push_message, 'debug', get_message_header(message), remove_username_password(outgoing_fanout_cfg.hostname)))
+
 
         # Acknowledge message only after publish(); if that fails, message is still in queue.
         message.ack()

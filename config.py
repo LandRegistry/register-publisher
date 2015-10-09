@@ -24,8 +24,9 @@ class Config(object):
     OUTGOING_QUEUE = os.getenv('OUTGOING_QUEUE', 'register-publisher')                          # Default outgoing queue name
 
     # Queue binding keys: "Anything goes".
-    INCOMING_KEY = os.getenv('INCOMING_KEY', '#')
-    OUTGOING_KEY = os.getenv('OUTGOING_KEY', '#')
+    INCOMING_KEY = os.getenv('INCOMING_KEY', 'system_of_record')
+    OUTGOING_KEY = os.getenv('OUTGOING_KEY', 'register-publisher')
+    OUTGOING_TOPIC_KEY = os.getenv('OUTGOING_KEY', 'register-publisher')
 
     # RabbitMQ Exchange default values:
     #   delivery_mode: '2' (persistent messages)
@@ -42,7 +43,7 @@ class Config(object):
     Configuration = namedtuple("Configuration", ['hostname', 'exchange', 'queue', 'binding_key'])
     INCOMING_CFG = Configuration(INCOMING_QUEUE_HOSTNAME, INCOMING_EXCHANGE, INCOMING_QUEUE, INCOMING_KEY)
     OUTGOING_FANOUT_CFG = Configuration(OUTGOING_QUEUE_HOSTNAME, OUTGOING_FANOUT_EXCHANGE, OUTGOING_QUEUE, OUTGOING_KEY)
-    OUTGOING_TOPIC_CFG = Configuration(OUTGOING_QUEUE_HOSTNAME, OUTGOING_TOPIC_EXCHANGE, OUTGOING_QUEUE, OUTGOING_KEY)
+    OUTGOING_TOPIC_CFG = Configuration(OUTGOING_QUEUE_HOSTNAME, OUTGOING_TOPIC_EXCHANGE, OUTGOING_QUEUE, OUTGOING_TOPIC_KEY)
     INCOMING_COUNT_CFG = Configuration(INCOMING_QUEUE_HOSTNAME, INCOMING_COUNT_EXCHANGE, INCOMING_QUEUE, INCOMING_KEY)
     OUTGOING_COUNT_CFG = Configuration(OUTGOING_QUEUE_HOSTNAME, OUTGOING_COUNT_EXCHANGE, OUTGOING_QUEUE, OUTGOING_KEY)
 
