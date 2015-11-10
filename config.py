@@ -65,3 +65,6 @@ class OatConfig(Config):
 
 class ProductionConfig(Config):
     LOG_THRESHOLD_LEVEL = os.getenv('LOG_THRESHOLD_LEVEL', 'INFO')
+
+class NewAConfig(Config):
+    LOG_THRESHOLD_LEVEL = os.getenv('LOG_THRESHOLD_LEVEL', 'INFO')

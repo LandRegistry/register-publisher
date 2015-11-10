@@ -28,6 +28,9 @@ case "$DEPLOY_ENVIRONMENT" in
   production)
   SUPERVISOR_ENV="SETTINGS=\"config.ProductionConfig\""
   ;;
+  newa)
+  SUPERVISOR_ENV="SETTINGS=\"config.NewAConfig\""
+  ;;
   *)
   SUPERVISOR_ENV="SETTINGS=\"config.DevelopmentConfig\""
   ;;
