@@ -31,6 +31,9 @@ case "$DEPLOY_ENVIRONMENT" in
   newa)
   SUPERVISOR_ENV="SETTINGS=\"config.NewAConfig\""
   ;;
+  newb)
+  SUPERVISOR_ENV="SETTINGS=\"config.NewBConfig\""
+  ;;
   *)
   SUPERVISOR_ENV="SETTINGS=\"config.DevelopmentConfig\""
   ;;
