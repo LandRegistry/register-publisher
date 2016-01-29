@@ -6,7 +6,7 @@ coverage==3.7.1
 Flask==0.10.1
 itsdangerous==0.24
 Jinja2==2.8
-kombu==3.0.24
+kombu==3.0.33
 MarkupSafe==0.23
 mock==1.1.0
 pathtools==0.1.2
