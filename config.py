@@ -9,6 +9,7 @@ class Config(object):
 
     # Flask DEBUG setting - not used.
     DEBUG = False
+    ENABLE_AUTH = True
 
     # Logging.
     LOG_THRESHOLD_LEVEL = os.getenv('LOG_THRESHOLD_LEVEL', 'ERROR')                 # Base threshold logging level.
@@ -50,6 +51,7 @@ class DevelopmentConfig(Config):
 
 class TestConfig(Config):
     LOG_THRESHOLD_LEVEL = os.getenv('LOG_THRESHOLD_LEVEL', 'INFO')
+    ENABLE_AUTH = False
 
 class PreviewConfig(Config):
     LOG_THRESHOLD_LEVEL = os.getenv('LOG_THRESHOLD_LEVEL', 'INFO')

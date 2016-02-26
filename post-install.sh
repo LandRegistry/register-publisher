@@ -65,4 +65,7 @@ autorestart=true
 user=$USER
 environment=$SUPERVISOR_ENV
 stopasgroup=true
+stdout_logfile=/var/log/supervisor/register-publisher.log
+redirect_stderr=true
+stderr_logfile=
 EOF

@@ -4,15 +4,13 @@ import sys
 import pwd
 import re
 import logging
-import logging.handlers
+import datetime
 import stopit
 import kombu
 import time
 from flask import Flask
 from kombu.common import maybe_declare
 from amqp import AccessRefused
-from python_logging.setup_logging import setup_logging
-
 
 """
 Register-Publisher: forwards messages from the System of Record to the outside world, via AMQP "topic broadcast".
@@ -26,7 +24,6 @@ Register-Publisher: forwards messages from the System of Record to the outside w
 See http://www.rabbitmq.com/blog/2010/10/19/exchange-to-exchange-bindings for an alternative arrangement, which may be
 unique to RabbitMQ. This might avoid the unpack/pack issue of 'process_message()' but it does not permit logging etc.
 More importantly perhaps, this package acts as a proxy publisher for the System of Record - i.e. security/isolation.
-
 
 """
 
@@ -42,23 +39,30 @@ outgoing_count_cfg = app.config['OUTGOING_COUNT_CFG']
 # Constraints, etc.
 MAX_RETRIES = app.config['MAX_RETRIES']
 
-LOG_NAME = "RP"
+logging.basicConfig(format='%(levelname)s %(asctime)s [RegisterPublisher] %(message)s', level=logging.INFO, datefmt='%d.%m.%y %I:%M:%S %p')
 
-# Set up logger
-def setup_logger(name=__name__):
 
-    # Standard LR configuration.
-    setup_logging()
-    # Specify base logging threshold level.
-    ll = app.config['LOG_THRESHOLD_LEVEL']
-    logger = logging.getLogger(name)
-    logger.setLevel(ll)
+def build_message(message):
+    if app.config['ENABLE_AUTH'] is False:
+        return 'Raised by: test, Message: ' + message
+    else:
+        return 'Raised by: ' + linux_user() + ', Message: ' + message
 
-    return logger
 
-logger = setup_logger(LOG_NAME)
+def get_title_from_header(mq_message):
+    #contains the title number for audit
+    try:
+        return mq_message.properties['application_headers']['title_number']
+    except Exception as err:
+        logging.warn(build_message('Message header not retrieved for message'))
+        return error_message + str(err)
 
-log_threshold_level_name = logging.getLevelName(logger.getEffectiveLevel())
+
+def linux_user():
+    try:
+        return pwd.getpwuid(os.geteuid()).pw_name
+    except Exception as err:
+        return "failed to get user: %s" % err
 
 
 # RabbitMQ connection; default user/password.
@@ -81,8 +85,8 @@ def setup_connection(queue_hostname, confirm_publish=True):
     # Run-time checks.
     assert type(confirm_publish) is bool
 
-    logger.debug(queue_hostname)
-    logger.debug("confirm_publish: {}".format(confirm_publish))
+    logging.debug( build_message( 'Set up connection, Queue: {}'.format( remove_username_password(queue_hostname) ) ) )
+    logging.debug( build_message( 'Confirm publish is {}'.format(confirm_publish) ) )
 
     # Attempt connection in a separate thread, as (implied) 'connect' call may hang if permissions not set etc.
     with stopit.ThreadingTimeout(10) as to_ctx_mgr:
@@ -96,7 +100,7 @@ def setup_connection(queue_hostname, confirm_publish=True):
         err_msg = "Connection unavailable: {}".format(queue_hostname)
         raise RuntimeError(err_msg)
 
-    logger.info("URI: {}".format(connection.as_uri()))
+    logging.debug( build_message( 'Connection URI is: {}'.format(connection.as_uri()) ) )
 
     return connection
 
@@ -106,7 +110,8 @@ def setup_channel(queue_hostname, exchange=None, connection=None):
     """ Get a channel and bind exchange to it. """
 
     assert exchange is not None
-    logger.info("exchange: {}".format(exchange))
+
+    logging.debug( build_message( 'Set up channel, exchange type is: {}'.format(exchange) ) )
 
     if connection is None:
         channel = setup_connection(queue_hostname).channel()
@@ -117,7 +122,7 @@ def setup_channel(queue_hostname, exchange=None, connection=None):
     exchange.maybe_bind(channel)
     maybe_declare(exchange, channel)
 
-    logger.debug('channel_id: {}'.format(channel.channel_id))
+    logging.debug( build_message( 'Set up channel, channel_id: {}'.format(channel.channel_id) ) )
 
     return channel
 
@@ -128,7 +133,7 @@ def setup_producer(cfg=outgoing_cfg, serializer='json', set_queue=True):
 
     assert type(set_queue) is bool
 
-    logger.debug("cfg: {}".format(cfg))
+    logging.debug( build_message( 'Set up producer, set cfg: {}'.format(cfg) ) )
 
     channel = setup_channel(cfg.hostname, exchange=cfg.exchange)
 
@@ -141,10 +146,10 @@ def setup_producer(cfg=outgoing_cfg, serializer='json', set_queue=True):
     # Publish message; the default message *routing* key is the outgoing queue name.
     producer = kombu.Producer(channel, exchange=cfg.exchange, routing_key=cfg.queue, serializer=serializer)
 
-    logger.debug('channel_id: {}'.format(producer.channel.channel_id))
-    logger.debug('exchange: {}'.format(producer.exchange.name))
-    logger.debug('routing_key: {}'.format(producer.routing_key))
-    logger.debug('serializer: {}'.format(producer.serializer))
+    logging.debug( build_message( 'channel_id: {}'.format(producer.channel.channel_id) ) )
+    logging.debug( build_message( 'exchange: {}'.format(producer.exchange.name) ) )
+    logging.debug( build_message( 'routing_key: {}'.format(producer.routing_key) ) )
+    logging.debug( build_message( 'serializer: {}'.format(producer.serializer) ) )
 
     # Track queue, for debugging purposes.
     producer._queue = queue
@@ -156,18 +161,18 @@ def setup_producer(cfg=outgoing_cfg, serializer='json', set_queue=True):
 def setup_consumer(cfg=incoming_cfg, callback=None):
     """ Create consumer with single queue and callback """
 
-    logger.debug("cfg: {}".format(cfg))
+    logging.debug( build_message( 'cfg: {}'.format(cfg) ) )
 
     channel = setup_channel(cfg.hostname, cfg.exchange)
-    logger.info("queue_name: {}".format(cfg.queue))
+    logging.debug( build_message( 'queue_name: {}'.format(cfg.queue) ) )
 
     # A consumer needs a queue, so create one (if necessary).
     queue = setup_queue(channel, cfg=cfg)
 
     consumer = kombu.Consumer(channel, queues=queue, callbacks=[callback], accept=['json'])
 
-    logger.debug('channel_id: {}'.format(consumer.channel.channel_id))
-    logger.debug('queue(s): {}'.format(consumer.queues))
+    logging.debug( build_message( 'channel_id: {}'.format(consumer.channel.channel_id) ) )
+    logging.debug( build_message( 'queue(s): {}'.format(consumer.queues) ) )
 
     return consumer
 
@@ -181,7 +186,7 @@ def setup_queue(channel=None, cfg=None, durable=True):
     if cfg is None:
         raise RuntimeError("setup_queue: 'cfg' required!")
 
-    logger.debug("cfg: {}".format(cfg))
+    logging.debug( build_message( 'cfg: {}'.format(cfg) ) )
 
     # N.B.: kombu mis-names the queue's Binding key as a Routing key!
     queue = kombu.Queue(name=cfg.queue, exchange=cfg.exchange, routing_key=cfg.binding_key, durable=durable)
@@ -195,56 +200,27 @@ def setup_queue(channel=None, cfg=None, durable=True):
     except AccessRefused:
         pass
 
-    logger.info("queue name, exchange, binding_key: {}, {}, {}".format(queue.name, cfg.exchange, cfg.binding_key))
+    logging.debug( build_message( 'queue name, exchange, binding_key: {}, {}, {}'.format(queue.name, cfg.exchange, cfg.binding_key) ) )
 
     return queue
-
-
-def make_log_msg(log_message, log_level, message_header, hostname):
-    #Constructs the message to submit to audit. Message header contains title number.
-    msg = log_message + ' queue address is: %s. ' % hostname
-    msg = msg + ' Signed in as: %s. ' % linux_user()
-    msg = msg + ' Message header is: %s. ' % message_header
-    msg = msg + ' Logged at: register-publisher/logs. '
-    return msg
-
-
-def get_message_header(mq_message):
-    #contains the title number for audit
-    try:
-        return mq_message.properties['application_headers']
-    except Exception as err:
-        error_message = "message header not retrieved for message"
-        logger.error(make_log_msg(error_message, 'error', 'no title', incoming_cfg.hostname))
-        return error_message + str(err)
-
-
-def linux_user():
-    try:
-        return pwd.getpwuid(os.geteuid()).pw_name
-    except Exception as err:
-        return "failed to get user: %s" % err
 
 
 # This is executed as a separate process by unit tests; cannot refer to 'INCOMING_QUEUE' etc. in that case.
 def run():
     """ "System of Record" to "Feeder" re-publisher. """
 
-    logger = setup_logger(LOG_NAME + '.run')
-
     def errback(exc, interval):
         """ Callback for use with 'ensure/autoretry'. """
 
-        logger.error('Error: {}'.format(exc))
-        logger.info('Retry in {} seconds.'.format(interval))
+        logging.error( build_message( 'Error: {}'.format(exc) ) )
+        logging.error( build_message( 'Retry in {} seconds.'.format(interval) ) )
 
     def ensure(connection, instance, method, *args, **kwargs):
         """ Retries 'method' if it raises connection or channel error.
 
             Error is re-raised if 'max_retries' exceeded.
-
         """
-        logger.debug("instance: {}, method: {}".format(instance.__class__, method))
+        logging.debug( build_message( 'instance: {}, method: {}'.format(instance.__class__, method) ) )
         _method = getattr(instance, method)
         _wrapper = connection.ensure(instance, _method, errback=errback, max_retries=MAX_RETRIES)
 
@@ -261,22 +237,19 @@ def run():
               'on_message()' doesn't really help, because publish() requires a message body.
 
         """
+        title = get_title_from_header(message)
 
-        pull_message = " Pull from incoming queue: {}".format(message.delivery_info)
-        logger.audit(make_log_msg(pull_message, 'debug', get_message_header(message), remove_username_password(incoming_cfg.hostname)))
+        logging.info( build_message( 'Pull from incoming queue for title: {}'.format(title) ) )
 
         # Forward message to outgoing exchange, with retry management.
-        outgoing_push_msg = " Push to outgoing queue: {}".format(message.delivery_info)
-        logger.audit(make_log_msg(outgoing_push_msg, 'debug', get_message_header(message), remove_username_password(incoming_cfg.hostname)))
+        logging.info( build_message( 'Push to outgoing queue for title: {}'.format(title) ) )
 
         ensure(producer.connection, producer, 'publish', body)
-        acknowledge_push_message = "Push Acknowledged (implied): {}".format(message.delivery_tag)
-        logger.audit(make_log_msg(acknowledge_push_message, 'debug', get_message_header(message), remove_username_password(outgoing_cfg.hostname)))
+        logging.info( build_message( 'Implied push to outgoing acknowledged for title: {}'.format(title) ) )
 
         # Acknowledge message only after publish(); if that fails, message is still in queue.
         message.ack()
-        acknowledge_pull_message = "Acknowledged Pull: {}".format(message.delivery_tag)
-        logger.audit(make_log_msg(acknowledge_pull_message, 'debug', get_message_header(message), remove_username_password(outgoing_cfg.hostname)))
+        logging.info( build_message( 'Acknowledged pull from incoming queue for title: {}'.format(title) ) )
 
 
     # Producer for outgoing exchange.
@@ -296,12 +269,12 @@ def run():
 
         # Permit an explicit abort.
         except KeyboardInterrupt:
-            logger.error("KeyboardInterrupt received!")
+            logging.error( build_message( 'KeyboardInterrupt received whilst processing title: {}'.format(title) ) )
             break
         # Trap (log) everything else.
         except Exception as e:
             err_line_no = sys.exc_info()[2].tb_lineno
-            logger.exception("{}: {}".format(err_line_no, str(e)))
+            logging.error( build_message( 'Exception for title: {}, error line: {}, error: {}'.format(title, err_line_no, str(e)) ) )
 
             # If we ignore the problem, perhaps it will go away ...
             time.sleep(10)
@@ -323,11 +296,14 @@ if __name__ == "__main__":
 
 @app.route("/outgoingcount")
 def outgoing_count():
+    logging.info( build_message( 'Check outgoing queue count' ) )
     jobs = get_queue_count(outgoing_count_cfg)
     return jobs, 200
 
+
 @app.route("/incomingcount")
 def incoming_count():
+    logging.info( build_message( 'Check incoming queue count' ) )
     jobs = get_queue_count(incoming_count_cfg)
     return jobs, 200
 
@@ -339,7 +315,8 @@ def get_queue_count(config):
         channel.close()
     return str(jobs)
 
+
 @app.route("/")
 def index():
+    logging.info( build_message( 'Health check' ) )
     return 'register publisher flask service running', 200
-
